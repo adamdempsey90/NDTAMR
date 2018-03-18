@@ -1,13 +1,14 @@
-#import numpy as np
-#import h5py
+import numpy as np
+import h5py
 #from .DataClass import Sim as Data
+
 
 class Node():
     """
         Nodes either point to their children or they have no
         children and instead hold some data.
     """
-    def __init__(self,name,dim=2,file=None,parent=None,data=None):
+    def __init__(self,name='0x0',dim=2,file=None,parent=None,data=None):
         """
             name is the hexadecimal chain of children indices that
             traces the node back to the root
@@ -19,8 +20,6 @@ class Node():
         self.fmt = '0{:d}b'.format(dim)
 
         self.name = name
-        #self.name = '/'.join(self.indx)
-        #self.level = len(indx)-1
         self.global_index = (0,) + tuple([0]*dim)
         self.parent = parent
         self.leaf = True
@@ -45,7 +44,35 @@ class Node():
         self.child_index ={i:self.index_from_bin(self.tobin(i)) for i in range(self.nchildren)}
 
         self.global_index = self.get_global_index(name)
-
+#    def save(self,file):
+#        """
+#            Write this node to the hdf5 group/file.
+#        """
+#        grp = file.create_group(self.indx[-1])
+#        if self.leaf:
+#            # We are a leaf, so we should dump our data
+#            dset = grp.create_group('Data')
+#            self.data.save(dset)
+#        else:
+#            # We are not a group, so call the children
+#            for c in self.child:
+#                c.save(grp)
+#        return
+#    def build(self,f):
+#        """
+#            Look in the hdf5 group f for child cells
+#        """
+#        for i in range(self.nchildren):
+#            try:
+#                grp = f[hex(i)]
+#                self.leaf = False
+#                self.child[i] = Node(self.name+hex(i),parent=self,file=grp)
+#                self.child[i].build(grp)
+#            except KeyError:
+#                self.leaf = True
+#                self.datastr = self.name + '/' + hex(i) + '/Data'
+#                self.data=Data(fname=f['Data'],node=self)
+#        return
     def get_local_index(self,name):
         """
             Get the local index relative to the parent from the name
@@ -109,7 +136,42 @@ class Node():
             name.append(n)
             level -= 1
         return hex(0) + ''.join(name[::-1])
-    def split(self):
+    def copy(self):
+        """
+            Return a copy of this node
+        """
+        return Node(name=self.name,dim=self.dim,data=self.data)
+    def deepcopy(self):
+        """
+            Deep copy of this node
+        """
+        import copy
+        return copy.deepcopy(self)
+    def remove(self):
+        """
+            Remove the tree below this node
+        """
+        self.child = [None]*self.nchildren
+        self.leaf = True
+    def pop(self):
+        """
+            Same as remove(), but also returns the tree below
+        """
+        new_tree =  self.deepcopy()
+        self.remove()
+        return new_tree
+    def insert(self,name): 
+        """
+            Insert a new point in the tree.
+            This is the same as find, but will
+            grow the tree to accommodate the new point.
+        """
+        
+        self.find(name,insert=True)
+
+
+    
+    def split(self,return_children=False):
         """
             Split the node into 2^dim children, and pass the data to the
             first born.
@@ -122,7 +184,9 @@ class Node():
         self.child[0] = Node(self.name+hex(0),dim=self.dim,parent=self,data=mydata)
         for i in range(1,self.nchildren):
             self.child[i] = Node(self.name+hex(i),dim=self.dim,parent=self,data=None)
-        return
+        if return_children:
+            return self.child
+        
     def up(self):
         """
             Move up the tree
@@ -144,7 +208,7 @@ class Node():
                 leaf_func(self)
             if printname:
                 print(self)
-            return self
+            return 
         if node_func is not None:
             node_func(self)
         for c in self.child:
@@ -159,10 +223,12 @@ class Node():
         self.walk(leaf_func=func)
         return max(res)
 
-    def find(self,name):
+    def find(self,name,insert=False):
         """
            Find the next step towards the node given
            by name.
+           If insert is True then the tree will grow to 
+           accomidate the new point
         """
         my_level = self.global_index[0]
 
@@ -172,7 +238,7 @@ class Node():
 
         if self.name == name:
             # Found it!
-            print('Node ', self.name, ' found ',name)
+            #print('Node ', self.name, 'FOUND ',name)
             return self
         if my_level < target_level:
             # It's below us so we need to determine which direction to go
@@ -180,17 +246,23 @@ class Node():
             if self.name == new_name:
                 # It's one of our descendents
                 child = names[my_level+1:][0]
-                print('Node ', self.name, ' is going to child ',child)
+                #print('Node ', self.name, ' is going to child ',child)
                 if self.leaf:
-                    return self
-                else:
-                    return self.down(int(child,base=16)).find(name)
+                    # Point doesn't exist currently  
+                    if not insert:
+                        #print(name,'is below this LEAF',self.name)
+                        return self
+                    #print('Node', self.name, 'SPLITS') 
+                    self.split()
+                    #print(self.child)
+                #print('Node',self.name,'MOVES DOWN to ',child)
+                return self.down(int(child,base=16)).find(name,insert=insert)
         # It's not below us, so move up
-        print('Node ', self.name, ' is going up to find ',name)
+        #print('Node ', self.name, 'MOVES UP',name)
         if self.parent is None:
-            print('{} is not in the tree!'.format(name))
+            #print('{} is not in the tree!'.format(name))
             return None
-        return self.up().find(name)
+        return self.up().find(name,inser=insert)
     def find_neighbors(self):
         """
             Find the neighbors and their parents.
@@ -206,22 +278,134 @@ class Node():
         neighbors = []
         upper_neighbors = []
         for ind in neighbor_indices:
-            if not all(i>=0 for i in ind):
+            if not all(i>=0 for i in ind): 
+                # Neighbor is outside domain
                 neighbors.append(None)
                 upper_neighbors.append(None)
             else:
                 n = self.get_name(ind)
                 node = self.find(n)
-                if node.name == n: # Node exists
+                if node.name == n: 
+                    # Node exists at this level
                     neighbors.append(node)
                     upper_neighbors.append(node.parent)
-                else: # Node doesn't exist, we have its parent
+                else: 
+                    # Node doesn't exist at this level, we have its parent
                     neighbors.append(None)
                     upper_neighbors.append(node)
 
 
         return offsets, neighbor_indices,neighbors, upper_neighbors
+    def get_dx(self,xmin=0,xmax=1):
+        """
+            Return the spacing for this level
+        """
+        dx = 2.**(-self.global_index[0])
+        return dx*(xmax-xmin)
+        
+        
+        
+    def get_coords(self,xmin=None,xmax=None):
+        """
+            Return the coordinates for this node.
+            xmin and xmax are the extent of the entire domain 
+            and default to [0,1]
+        """
+        if xmin is None:
+            xmin=[0]*self.dim
+        if xmax is None:
+            xmax=[1]*self.dim
+        dx = 2.**(-self.global_index[0])
+        indx = self.global_index[1:]
+        return [i*dx*(xo-xi) + xi for i,xi,xo in zip(indx,xmin,xmax)]
+    def list_leaves(self,attr='name',func=None):
+        """
+            Return a list of leaves below this node.
+            What is returned is controlled by attr and func
+            attr returns the given attribute of the leaf
+            func is a function applied to the leaf.
+        """
+        leaves = []
+        if func is None:
+            if attr is 'self' or attr is 'obj':
+                func = lambda i: i
+            else:
+                func = lambda i: getattr(i,attr)
+        
+        self.walk(leaf_func=lambda i: leaves.append(func(i)))
+        return leaves
+    def grid_lines(self,i1=0,i2=1):
+        """
+            Return the lines which split the node
+        """
+        if self.leaf:
+            return None
 
+        dx = 2.**(-self.global_index[0])
+        indx = self.global_index[1:]
+        dx /= 2
+        i = indx[i1]
+        j = indx[i2]
+        i_line = [ (dx*(2*j+1),dx*(2*i)),(dx*(2*j+1),dx*(2*(i+1)))]
+        j_line = [ (dx*(2*j),dx*(2*i+1)),(dx*(2*(j+1)),dx*(2*i+1))]
+        return [i_line,j_line]
+        
+        
+
+    def generate_grid(self,i1=0,i2=1,max_level=np.infty,save=None,xmin=None,xmax=None):
+        if xmin is None:
+            xmin = [0]*self.dim
+        if xmax is None:
+            xmax = [1]*self.dim
+
+
+        lines = []
+        self.walk(node_func=lambda x: lines.extend(x.grid_lines(i1=i1,i2=i2) if x.global_index[0]<max_level else [None,None]))
+        xscale = (xmax[i1]-xmin[i1])
+        yscale = xmax[i2]-xmin[i2]
+        xstart = xmin[i1]
+        ystart = xmin[i2]
+        grid = []
+        for line in lines:
+            if line is not None:
+                grid.append( [
+                    (line[0][0]*xscale + xstart, line[0][1]*yscale+ystart),
+                    (line[1][0]*xscale + xstart,line[1][1]*yscale+ystart)])
+
+
+
+        if save is not None:
+            np.array(grid).tofile(save)
+
+        return grid
+
+    def grid_plot(self,i1=0,i2=1,max_level=np.infty,save=None,xmin=None,xmax=None,savefig=None,
+                 lw=1,colors='k',figsize=(6,6)):
+        import matplotlib.collections as mc
+        import matplotlib.pyplot as plt
+        fig,ax = plt.subplots(figsize=figsize)
+                  
+        if xmin is None:
+            xmin = [0]*self.dim
+        if xmax is None:
+            xmax = [1]*self.dim
+
+
+        grid = self.generate_grid(i1=i1,i2=i2,max_level=max_level,save=save,xmin=xmin,xmax=xmax)
+        lc = mc.LineCollection(grid,colors=colors,lw=lw)
+
+        ax.add_collection(lc)
+                
+
+        ax.set_xlim((xmin[i1],xmax[i1]))
+        ax.set_ylim((xmin[i2],xmax[i2]))
+
+        ax.minorticks_on()
+        ax.set_xlabel('$x_{:d}$'.format(i1+1),fontsize=20)
+        ax.set_ylabel('$x_{:d}$'.format(i2+1),fontsize=20)
+        ax.tick_params(labelsize=16)
+        fig.tight_layout()
+        return fig,ax
 
     def __repr__(self):
         return self.name
