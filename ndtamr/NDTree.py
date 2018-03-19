@@ -307,7 +307,8 @@ class Node():
                 x.rflag = False
         self.walk(leaf_func = do_split)
         return
-    def refinement_check(self,refine_all=False,corners=False,**kargs):
+    def refinement_check(self,refine_all=False,
+                         corners=False,**kargs):
         """
             Check neighbors to see if this node should
             be refined.
@@ -338,7 +339,8 @@ class Node():
                 final_list[i].rflag |= res[i]
 
         return num,den,result
-    def refinement_lohner(self,nodes,tol=.8,eps=.01,min_value=1e-8,**kargs):
+    def refinement_lohner(self,nodes,tol=.8,eps=.01,
+                          min_value=1e-8,**kargs):
         
         total_neighbors = 3**self.dim
         ans = [False]*total_neighbors
