@@ -271,31 +271,140 @@ class Node():
         level = self.global_index[0]
         indx = self.global_index[1:]
 
+        total_neighbors = 3**self.dim
         offsets = list(itertools.product([-1,0,1],repeat=self.dim))
+        
 
         neighbor_indices = [(level,)+tuple([x+j for j,x in zip(i,indx)]) for i in offsets]
 
-        neighbors = []
-        upper_neighbors = []
-        for ind in neighbor_indices:
-            if not all(i>=0 for i in ind): 
-                # Neighbor is outside domain
-                neighbors.append(None)
-                upper_neighbors.append(None)
-            else:
+        # Default to None
+        neighbors = [None]*total_neighbors
+        upper_neighbors = [None]*total_neighbors
+        for i,ind in enumerate(neighbor_indices):
+            # Check that the point is inside the domain
+            if all(j>=0 for j in ind): 
                 n = self.get_name(ind)
                 node = self.find(n)
                 if node.name == n: 
                     # Node exists at this level
-                    neighbors.append(node)
-                    upper_neighbors.append(node.parent)
+                    neighbors[i] = node
+                    upper_neighbors[i] = node.parent
                 else: 
                     # Node doesn't exist at this level, we have its parent
-                    neighbors.append(None)
-                    upper_neighbors.append(node)
+                    upper_neighbors[i] = node
 
 
         return offsets, neighbor_indices,neighbors, upper_neighbors
+    def clear_refine(self):
+        """Set all refinemnet flags to False"""
+        self.walk(leaf_func=lambda x: setattr(x,'rflag',False))
+   
+    def start_refine(self):
+        """Look through leaves and split if flagged for refinement."""
+        def do_split(x):
+            if x.rflag:
+                x.split()
+                x.rflag = False
+        self.walk(leaf_func = do_split)
+        return
+    def refinement_check(self,refine_all=False,corners=False,**kargs):
+        """
+            Check neighbors to see if this node should
+            be refined.
+        """
+
+        # Get neighbors
+
+        total_neighbors = 3**self.dim
+        offsets, neighbor_indices,neighbors, upper_neighbors = self.find_neighbors()
+
+        # Even if already tagged, still need to check new neighbors
+        final_list = [None]*total_neighbors
+        
+        for i in range(total_neighbors):
+            ind = sum([j * 3**(2-k) for k,j in enumerate(i)])
+            
+            if upper_neighbors[i] is not None:
+                node = self.find(upper_neighbors[i])
+                if not node.leaf:
+                    node = node.find(neighbors[i])
+                final_list[i] = node
+
+
+        res,num,den,result = self.refinement_lohner(final_list,**kargs)
+        
+        for i in range(total_neighbors):
+            if final_list[i] is not None:
+                final_list[i].rflag |= res[i]
+
+        return num,den,result
+    def refinement_lohner(self,nodes,tol=.8,eps=.01,min_value=1e-8,**kargs):
+        
+        total_neighbors = 3**self.dim
+        ans = [False]*total_neighbors
+        
+        u = np.zeros((total_neighbors,))
+    
+    
+        u1 = self.data.get_refinement_data()
+#        u1 = clean_data(root.data.get_refinement_data())
+#        unst = root.data.Bools.unst
+#        inres = root.data.Bools.inres
+
+#        if unst:
+#            u1 = 180.
+        for i,node in enumerate(nodes):
+            if node is None:
+                u[i] = u1
+            else:
+                try:
+                    d = node.get_refinement_data()
+                except:
+                    print('Node',n,'failed on get_refinement_data()')
+                    print(d)
+                    raise
+                #inres |= nodes[i][j].data.Bools.inres
+                #if nodes[i][j].data.Bools.unst:
+                #    d = u1
+                
+                u[i] = d
+
+        numerator = 0
+        denominator = 0
+        
+
+        ifunc = lambda x: sum([j * 3**(2-k) for k,j in enumerate(x)])
+        
+        iC = ifunc([1]*self.dim)
+        
+        for i in range(self.dim):
+            iL = [1]*self.dim
+            iR = [1]*self.dim
+            iL[i] += 1
+            iR[i] -= 1
+            numerator += (u[ifunc(iR)] - 2*u[iC] + u[ifunc(iL)])**2
+            denominator += (abs(u[iR]-u[iC]) + abs(u[iL]-u[iC]) + eps*abs(u[iL] + 2*u[iC] + u[iR]))**2
+        #if corners:
+        #numerator += (.5*abs( u[2,2] + u[0,0] - u[0,2] - u[2,0]))**2
+
+
+        resx = np.sqrt(numerator/denominator)
+        if abs(numerator) < min_value and abs(denominator) < min_value:
+            resx = 0.
+        if abs(denominator) < min_value:
+            resx = 0.
+
+        if resx >= tol and inres:
+            ans[iC] = True
+            for i in range(self.dim):
+                iL = [1]*self.dim
+                iR = [1]*self.dim
+                iL[i] += 1
+                iR[i] -= 1
+                ans[ifunc(iL)] = True
+                ans[ifunc(iR)] = True
+        
+        return ans,np.sqrt(numerator),np.sqrt(denominator),resx
     def get_dx(self,xmin=0,xmax=1):
         """
             Return the spacing for this level
