@@ -118,7 +118,7 @@ def plot(tree,slice=[0,1],q=None,cmap='viridis',func=lambda x: x,grid=False,figs
     
     res = convert_to_uniform(tree,slice=slice,q=q,func=func)
     
-    ax.imshow(res,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin='lower',cmap=cmap)
+    ax.imshow(res,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin='lower',interpolation='none',cmap=cmap)
 
 
 

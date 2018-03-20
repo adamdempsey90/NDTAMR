@@ -167,7 +167,7 @@ class Node():
             grow the tree to accommodate the new point.
         """
         
-        self.find(name,insert=True)
+        return self.find(name,insert=True)
 
 
     
@@ -197,23 +197,33 @@ class Node():
             Move down the tree to child i
         """
         return self.child[i]
-    def walk(self,printname=False,leaf_func=None,node_func=None):
+    def walk(self,printname=False,leaf_func=None,node_func=None, target_level=None,
+             maxlevel=np.infty):
         """
             Recursively walk the tree.
             If the node is a leaf apply the leaf_func,
             if it is not a leaf apply the node_func.
         """
+        if target_level is not None:
+            if self.global_index[0] > target_level:
+                return
         if self.leaf:
-            if leaf_func is not None:
-                leaf_func(self)
-            if printname:
-                print(self)
+            if target_level is None:
+                if leaf_func is not None:
+                    leaf_func(self)
+                if printname:
+                    print(self)
+            else:
+                if self.global_index[0] == target_level:
+                    if leaf_func is not None:
+                        leaf_func(self)
             return 
         if node_func is not None:
             node_func(self)
         for c in self.child:
             c.walk(printname=printname,
-                    leaf_func=leaf_func,node_func=node_func)
+                    leaf_func=leaf_func,node_func=node_func,
+                   target_level=target_level,maxlevel=maxlevel)
     def depth(self):
         """
             Find the depth of the tree
