@@ -262,7 +262,7 @@ class Node():
         if self.parent is None:
             #print('{} is not in the tree!'.format(name))
             return None
-        return self.up().find(name,inser=insert)
+        return self.up().find(name,insert=insert)
     def find_neighbors(self):
         """
             Find the neighbors and their parents.
@@ -295,118 +295,7 @@ class Node():
 
 
         return offsets, neighbor_indices,neighbors, upper_neighbors
-    def clear_refine(self):
-        """Set all refinemnet flags to False"""
-        self.walk(leaf_func=lambda x: setattr(x,'rflag',False))
-   
-    def start_refine(self):
-        """Look through leaves and split if flagged for refinement."""
-        def do_split(x):
-            if x.rflag:
-                x.split()
-                x.rflag = False
-        self.walk(leaf_func = do_split)
-        return
-    def refinement_check(self,refine_all=False,
-                         corners=False,**kargs):
-        """
-            Check neighbors to see if this node should
-            be refined.
-        """
 
-        # Get neighbors
-
-        total_neighbors = 3**self.dim
-        offsets, neighbor_indices,neighbors, upper_neighbors = self.find_neighbors()
-
-        # Even if already tagged, still need to check new neighbors
-        final_list = [None]*total_neighbors
-        
-        for i in range(total_neighbors):
-            ind = sum([j * 3**(2-k) for k,j in enumerate(i)])
-            
-            if upper_neighbors[i] is not None:
-                node = self.find(upper_neighbors[i])
-                if not node.leaf:
-                    node = node.find(neighbors[i])
-                final_list[i] = node
-
-
-        res,num,den,result = self.refinement_lohner(final_list,**kargs)
-        
-        for i in range(total_neighbors):
-            if final_list[i] is not None:
-                final_list[i].rflag |= res[i]
-
-        return num,den,result
-    def refinement_lohner(self,nodes,tol=.8,eps=.01,
-                          min_value=1e-8,**kargs):
-        
-        total_neighbors = 3**self.dim
-        ans = [False]*total_neighbors
-        
-        u = np.zeros((total_neighbors,))
-    
-    
-        u1 = self.data.get_refinement_data()
-#        u1 = clean_data(root.data.get_refinement_data())
-#        unst = root.data.Bools.unst
-#        inres = root.data.Bools.inres
-
-#        if unst:
-#            u1 = 180.
-        for i,node in enumerate(nodes):
-            if node is None:
-                u[i] = u1
-            else:
-                try:
-                    d = node.get_refinement_data()
-                except:
-                    print('Node',n,'failed on get_refinement_data()')
-                    print(d)
-                    raise
-                #inres |= nodes[i][j].data.Bools.inres
-                #if nodes[i][j].data.Bools.unst:
-                #    d = u1
-                
-                u[i] = d
-
-        numerator = 0
-        denominator = 0
-        
-
-        ifunc = lambda x: sum([j * 3**(2-k) for k,j in enumerate(x)])
-        
-        iC = ifunc([1]*self.dim)
-        
-        for i in range(self.dim):
-            iL = [1]*self.dim
-            iR = [1]*self.dim
-            iL[i] += 1
-            iR[i] -= 1
-            numerator += (u[ifunc(iR)] - 2*u[iC] + u[ifunc(iL)])**2
-            denominator += (abs(u[iR]-u[iC]) + abs(u[iL]-u[iC]) + eps*abs(u[iL] + 2*u[iC] + u[iR]))**2
-        #if corners:
-        #numerator += (.5*abs( u[2,2] + u[0,0] - u[0,2] - u[2,0]))**2
-
-
-        resx = np.sqrt(numerator/denominator)
-        if abs(numerator) < min_value and abs(denominator) < min_value:
-            resx = 0.
-        if abs(denominator) < min_value:
-            resx = 0.
-
-        if resx >= tol and inres:
-            ans[iC] = True
-            for i in range(self.dim):
-                iL = [1]*self.dim
-                iR = [1]*self.dim
-                iL[i] += 1
-                iR[i] -= 1
-                ans[ifunc(iL)] = True
-                ans[ifunc(iR)] = True
-        
-        return ans,np.sqrt(numerator),np.sqrt(denominator),resx
     def get_dx(self,xmin=0,xmax=1):
         """
             Return the spacing for this level
@@ -444,80 +333,7 @@ class Node():
                 func = lambda i: getattr(i,attr)
         
         self.walk(leaf_func=lambda i: leaves.append(func(i)))
-        return leaves
-    def grid_lines(self,i1=0,i2=1):
-        """
-            Return the lines which split the node
-        """
-        if self.leaf:
-            return None
-
-        dx = 2.**(-self.global_index[0])
-        indx = self.global_index[1:]
-        dx /= 2
-        i = indx[i1]
-        j = indx[i2]
-        i_line = [ (dx*(2*j+1),dx*(2*i)),(dx*(2*j+1),dx*(2*(i+1)))]
-        j_line = [ (dx*(2*j),dx*(2*i+1)),(dx*(2*(j+1)),dx*(2*i+1))]
-        return [i_line,j_line]
-        
-        
-
-    def generate_grid(self,i1=0,i2=1,max_level=np.infty,save=None,xmin=None,xmax=None):
-        if xmin is None:
-            xmin = [0]*self.dim
-        if xmax is None:
-            xmax = [1]*self.dim
-
-
-        lines = []
-        self.walk(node_func=lambda x: lines.extend(x.grid_lines(i1=i1,i2=i2) if x.global_index[0]<max_level else [None,None]))
-        xscale = (xmax[i1]-xmin[i1])
-        yscale = xmax[i2]-xmin[i2]
-        xstart = xmin[i1]
-        ystart = xmin[i2]
-        grid = []
-        for line in lines:
-            if line is not None:
-                grid.append( [
-                    (line[0][0]*xscale + xstart, line[0][1]*yscale+ystart),
-                    (line[1][0]*xscale + xstart,line[1][1]*yscale+ystart)])
-
-
-
-        if save is not None:
-            np.array(grid).tofile(save)
-
-        return grid
-
-    def grid_plot(self,i1=0,i2=1,max_level=np.infty,save=None,xmin=None,xmax=None,savefig=None,
-                 lw=1,colors='k',figsize=(6,6)):
-        import matplotlib.collections as mc
-        import matplotlib.pyplot as plt
-        fig,ax = plt.subplots(figsize=figsize)
-                  
-        if xmin is None:
-            xmin = [0]*self.dim
-        if xmax is None:
-            xmax = [1]*self.dim
-
-
-        grid = self.generate_grid(i1=i1,i2=i2,max_level=max_level,save=save,xmin=xmin,xmax=xmax)
-        lc = mc.LineCollection(grid,colors=colors,lw=lw)
-
-        ax.add_collection(lc)
-                
-
-        ax.set_xlim((xmin[i1],xmax[i1]))
-        ax.set_ylim((xmin[i2],xmax[i2]))
-
-        ax.minorticks_on()
-        ax.set_xlabel('$x_{:d}$'.format(i1+1),fontsize=20)
-        ax.set_ylabel('$x_{:d}$'.format(i2+1),fontsize=20)
-        ax.tick_params(labelsize=16)
-        fig.tight_layout()
-        return fig,ax
-
+        return leaves    
     def __repr__(self):
         return self.name
     def __str__(self):
