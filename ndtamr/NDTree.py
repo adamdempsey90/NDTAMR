@@ -151,6 +151,8 @@ class Node():
         """
             Remove the tree below this node
         """
+        if self.child[0].data is not None:
+            self.data = self.child[0].data.copy()
         self.child = [None]*self.nchildren
         self.leaf = True
     def pop(self):
@@ -315,7 +317,7 @@ class Node():
         
         
         
-    def get_coords(self,xmin=None,xmax=None):
+    def get_coords(self,xmin=None,xmax=None,shift=False):
         """
             Return the coordinates for this node.
             xmin and xmax are the extent of the entire domain 
@@ -327,7 +329,8 @@ class Node():
             xmax=[1]*self.dim
         dx = 2.**(-self.global_index[0])
         indx = self.global_index[1:]
-        return [i*dx*(xo-xi) + xi for i,xi,xo in zip(indx,xmin,xmax)]
+        shift = .5 if shift else 0
+        return [(i+shift)*dx*(xo-xi) + xi for i,xi,xo in zip(indx,xmin,xmax)]
     def list_leaves(self,attr='name',func=None):
         """
             Return a list of leaves below this node.

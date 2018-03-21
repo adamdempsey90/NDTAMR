@@ -1,4 +1,5 @@
 import numpy as np
+from .Vis import plot
 
 def compression(tree):
     """Print some statistics about the efficiency of the AMR grid."""
@@ -18,97 +19,54 @@ def start_refine(tree):
     
     def do_split(x,count):
         if x.rflag:
+            x.rflag = False
             count.append(x.name)
             x.split()
+            
+    total = []
+    tree.walk(leaf_func = lambda x: do_split(x,total))
+    return len(total)
+
+def start_derefine(tree):
+    """Look through leaves and derefine if needed."""
+    
+    def do_split(x,count):
+        if x.rflag:
+            count.append(x.name)
+            x.remove()
             x.rflag = False
     total = []
     tree.walk(leaf_func = lambda x: do_split(x,total))
     return len(total)
-def refine(tree,tol=.8,eps=.01,maxdiff=1,**kargs):
+def refine(tree,tol=.8,eps=.01,show=False,**kargs):
     depth = tree.depth()
     for lvl in range(depth+1)[::-1]:
         tree.walk(target_level=lvl,
                   leaf_func = lambda x: refinement_check(x,tol=tol,eps=eps,**kargs))
-    if maxdiff > 0:
-        tree.walk(leaf_func = lambda x: maxlevel_check(x,maxdiff,**kargs))
+    print("Enforcing neighbors")
+    for lvl in range(depth+1)[::-1]:
+        tree.walk(target_level=lvl,leaf_func=lambda x: refinement_check(x,criteria=neighbor_check))
+    if show:
+        plot(tree,q='d',grid=True,rflag=True)
+    
     total = start_refine(tree)
     return total
-    
-def refinement_check(leaf,refine_all=False,
-                     corners=False,**kargs):
-    """
-        Check neighbors to see if this node should
-        be refined.
-    """
-
-    # Get neighbors
-
-    total_neighbors = 3**leaf.dim
-    offsets, neighbor_indices,neighbors, upper_neighbors = leaf.find_neighbors()
-
-    # Even if already tagged, still need to check new neighbors
-    final_list = [None]*total_neighbors
-
-    for i in range(total_neighbors):
-#        ind = sum([j * 3**(2-k) for k,j in enumerate(i)])
-
-        if upper_neighbors[i] is not None:
-            node = upper_neighbors[i]
-#            node = leaf.find(upper_neighbors[i])
-            if not node.leaf:
-                node = neighbors[i]
-#                node = node.find(neighbors[i])
-            final_list[i] = node
 
 
-    res,num,den,result = refinement_lohner(leaf,final_list,**kargs)
-    
-
-    for i in range(total_neighbors):
-        if final_list[i] is not None:
-            final_list[i].rflag |= res
-
-    return num,den,result
-
-def maxlevel_check(leaf,refine_all=False,
-                     corners=False,**kargs):
-    """
-        Check for a neighbor that is being refined
-    """
-
-    # Ignore if already flagged for refinement
-    if leaf.rflag:
-        return
-    
-    total_neighbors = 3**leaf.dim
-    offsets, neighbor_indices,neighbors, upper_neighbors = leaf.find_neighbors()
-
-    # Even if already tagged, still need to check new neighbors
-    final_list = [None]*total_neighbors
-
-    for i in range(total_neighbors):
-#        ind = sum([j * 3**(2-k) for k,j in enumerate(i)])
-
-        if upper_neighbors[i] is not None:
-            node = upper_neighbors[i]
-#            node = leaf.find(upper_neighbors[i])
-            if not node.leaf:
-                node = neighbors[i]
-#                node = node.find(neighbors[i])
-            final_list[i] = node
+def neighbor_check(leaf,neighbors,**kargs):
+    res = False
+    for n in neighbors:  
+        if n is not None:
+            if leaf.global_index[0] < n.global_index[0]:    
+                res |= n.rflag
+    return res,0
 
 
-    res,num,den,result = refinement_lohner(leaf,final_list,**kargs)
-    
 
-    for i in range(total_neighbors):
-        if final_list[i] is not None:
-            final_list[i].rflag |= res[i]
 
-    return num,den,result
 
 def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
-                      min_value=1e-8,**kargs):
+                      min_value=1e-8,reverse=False,**kargs):
 
     total_neighbors = 3**leaf.dim
     ans = [False]*total_neighbors
@@ -168,6 +126,9 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
         resx = 0.
 
     ans =  resx >= tol
+    if reverse:
+        ans = not ans
+        
 #        ans[iC] = True
 #        for i in range(leaf.dim):
 #            iL = [1]*leaf.dim
@@ -177,4 +138,38 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
 #            ans[ifunc(iL)] = True
 #            ans[ifunc(iR)] = True
 
-    return ans,np.sqrt(numerator),np.sqrt(denominator),resx
+    return ans,resx
+
+def refinement_check(leaf,criteria=refinement_lohner,**kargs):
+    """
+        Check neighbors to see if this node should
+        be refined.
+    """
+
+    # Get neighbors
+  #  print(leaf.global_index[0],leaf.name,leaf.rflag)
+    total_neighbors = 3**leaf.dim
+    offsets, neighbor_indices,neighbors, upper_neighbors = leaf.find_neighbors()
+
+    # Even if already tagged, still need to check new neighbors
+    final_list = [None]*total_neighbors
+
+    for i in range(total_neighbors):
+#        ind = sum([j * 3**(2-k) for k,j in enumerate(i)])
+
+        if upper_neighbors[i] is not None:
+            node = upper_neighbors[i]
+#            node = leaf.find(upper_neighbors[i])
+            if not node.leaf:
+                node = neighbors[i]
+#                node = node.find(neighbors[i])
+            final_list[i] = node
+
+
+    res,value = criteria(leaf,final_list,**kargs)
+    
+    for node in final_list:
+        if node is not None:
+            node.rflag  |= res
+
+    return res,value

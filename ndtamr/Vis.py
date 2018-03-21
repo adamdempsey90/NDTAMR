@@ -15,8 +15,8 @@ def grid_lines(node,slice=[0,1]):
     indx = np.array(node.global_index[1:])
     
     i,j = indx[slice]
-    i_line = [ (dx*(2*j+1),dx*(2*i)),(dx*(2*j+1),dx*(2*(i+1)))]
-    j_line = [ (dx*(2*j),dx*(2*i+1)),(dx*(2*(j+1)),dx*(2*i+1))]
+    i_line = [ (dx*(2*i+1),dx*(2*j)),(dx*(2*i+1),dx*(2*(j+1)))]
+    j_line = [ (dx*(2*i),dx*(2*j+1)),(dx*(2*(i+1)),dx*(2*j+1))]
     return [i_line,j_line]
 
 
@@ -102,7 +102,7 @@ def convert_to_uniform(tree,slice=[0,1],q=None,func=lambda x: x,**kargs):
             res[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
     return res
         
-def plot(tree,slice=[0,1],q=None,cmap='viridis',func=lambda x: x,grid=False,figsize=(6,6),fig=None,ax=None,xmin=None,xmax=None,**kargs):
+def plot(tree,slice=[0,1],q=None,cmap='viridis',rflag=False,func=lambda x: x,grid=False,figsize=(6,6),fig=None,ax=None,xmin=None,xmax=None,**kargs):
     if ax is None:
         fig,ax = plt.subplots(figsize=figsize)
 
@@ -118,9 +118,17 @@ def plot(tree,slice=[0,1],q=None,cmap='viridis',func=lambda x: x,grid=False,figs
     
     res = convert_to_uniform(tree,slice=slice,q=q,func=func)
     
-    ax.imshow(res,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin='lower',interpolation='none',cmap=cmap)
+    ax.imshow(res.T,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin='lower',interpolation='none',cmap=cmap)
 
-
+    if rflag:
+        coords = []
+        cfunc = lambda x: coords.append(x.get_coords(xmin=xmin,xmax=xmax,shift=True) if x.rflag else None)
+        tree.walk(leaf_func=cfunc)
+        for c in coords:
+            if c is not None:
+                ax.plot(c[slice[0]],c[slice[1]],'r.')
+        
+        
 
     
     
