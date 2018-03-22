@@ -1,6 +1,40 @@
 import numpy as np
 import copy
 
+class Empty():
+    def __init__(self,coords=(0,0),file=None,data=None):
+        self.d = 0
+    
+    def get_refinement_data(self):
+        return self.d
+    def get_refinement_data(self):
+        return self.d
+    def copy(self):
+        import copy
+        return copy.copy(self)
+    def save(self,file):
+        grp = file.create_group('Data')
+        for c in self.cols:
+            grp.create_dataset(c,data=getattr(self,c))
+    def __rmul__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d *= val
+        return newdat
+    def __mul__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d *= val
+        return newdat
+    
+    def __add__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d += val.d
+        return newdat
+    def __radd__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d += val.d
+        return newdat
+    
+
 class SimpleTest2D():
     cols=['x','y','d']
     def __init__(self,coords=(0,0),file=None,data=None):
@@ -127,7 +161,7 @@ class SpiralTest3D():
         res = np.exp(-((self.xc-xs)**2 + (self.yc-ys)**2)/(2*.3**2))
         if np.isnan(res) or np.isinf(res):
             res = 1
-        return res * np.exp(-self.zc**2/(2*.1**2))
+        return res * np.exp(-self.zc**2/(2*.4**2))
     def get_refinement_data(self):
         return self.d
     def copy(self):

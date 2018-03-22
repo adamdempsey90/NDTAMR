@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 #from .NDTree import Node
 
 
-def grid_lines(node,dims=[0,1]):
+def grid_lines(node,dims=[0,1],slice=None):
     """
         Return the lines which split the node
     """
@@ -14,29 +14,41 @@ def grid_lines(node,dims=[0,1]):
     dx = 2.**(-node.global_index[0]-1)
     indx = np.array(node.global_index[1:])
     
+    coords = np.array(node.coords)
+    ndx = np.array(node.dx)
+    if slice is not None:
+        for s in slice:
+            if not (s[1] >= coords[s[0]] and s[1] < coords[s[0]]+ndx[s[0]]):
+                return [None,None]
+            
     i,j = indx[dims]
-    i_line = [ (dx*(2*i+1),dx*(2*j)),(dx*(2*i+1),dx*(2*(j+1)))]
-    j_line = [ (dx*(2*i),dx*(2*j+1)),(dx*(2*(i+1)),dx*(2*j+1))]
+    idx,jdx = np.array(node.dx)[dims] / 2
+    istart,jstart = np.array(node.xmin)[dims]
+    i_line = [ (istart + idx*(2*i+1),jstart+jdx*(2*j)),(istart+idx*(2*i+1),jstart+jdx*(2*(j+1)))]
+    j_line = [ (istart + idx*(2*i),jstart+jdx*(2*j+1)),(istart+idx*(2*(i+1)),jstart+jdx*(2*j+1))]
     return [i_line,j_line]
 
 
 
-def generate_grid(node,dims=[0,1],max_level=np.infty,save=None,):
+def generate_grid(node,dims=[0,1],slice=None,max_level=np.infty,save=None,):
         
-    xmin = np.array(node.xmin)
-    xmax = np.array(node.xmax)
+#    xmin = np.array(node.xmin)
+#    xmax = np.array(node.xmax)
 
     lines = []
-    node.walk(node_func=lambda x: lines.extend(grid_lines(x,dims=dims) if x.global_index[0]<max_level else [None,None]))
+    node.walk(node_func=lambda x: lines.extend(grid_lines(x,dims=dims,slice=slice) if x.global_index[0]<max_level else [None,None]))
     
-    xscale = xmax[dims]-xmin[dims]
-    xstart = xmin[dims]
+#    xscale = xmax[dims]-xmin[dims]
+#    xstart = xmin[dims]
     grid = []
     for line in lines:
         if line is not None:
+#            grid.append( [
+#                (line[0][0]*xscale[0] + xstart[0], line[0][1]*xscale[1]+xstart[1]),
+#                (line[1][0]*xscale[0] + xstart[0],line[1][1]*xscale[1]+xstart[1])])
             grid.append( [
-                (line[0][0]*xscale[0] + xstart[0], line[0][1]*xscale[1]+xstart[1]),
-                (line[1][0]*xscale[0] + xstart[0],line[1][1]*xscale[1]+xstart[1])])
+                (line[0][0], line[0][1]),
+                (line[1][0],line[1][1])])
 
 
 
@@ -45,7 +57,7 @@ def generate_grid(node,dims=[0,1],max_level=np.infty,save=None,):
 
     return grid
 
-def grid_plot(node,dims=[0,1],max_level=np.infty,save=None,savefig=None,
+def grid_plot(node,dims=[0,1],slice=None,max_level=np.infty,save=None,savefig=None,
              fig=None,ax=None,lw=1,colors='k',figsize=(6,6),**kargs):
     import matplotlib.collections as mc
     if ax is None:
@@ -55,7 +67,7 @@ def grid_plot(node,dims=[0,1],max_level=np.infty,save=None,savefig=None,
     xmin = np.array(node.xmin)
     xmax = np.array(node.xmax)
 
-    grid = generate_grid(node,dims=dims,max_level=max_level,save=save)
+    grid = generate_grid(node,dims=dims,slice=slice,max_level=max_level,save=save)
     lc = mc.LineCollection(grid,colors=colors,lw=lw)
 
     ax.add_collection(lc)
@@ -152,7 +164,7 @@ def plot(tree,dims=[0,1],slice=None,q=None,cmap='viridis',rflag=False,func=lambd
     ax.tick_params(labelsize=16)
     
     if grid:
-        grid_plot(tree,dims=dims,fig=fig,ax=ax,**kargs)
+        grid_plot(tree,dims=dims,slice=slice,fig=fig,ax=ax,**kargs)
     fig.tight_layout()
     return fig,ax
 def _create_colorbar(ax,vmin,vmax,log=False,cmap='viridis',**kargs):

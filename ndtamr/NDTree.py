@@ -1,14 +1,12 @@
 import numpy as np
-import h5py
-#from .DataClass import Sim as Data
-
+from .Data import Empty
 
 class Node():
     """
         Nodes either point to their children or they have no
         children and instead hold some data.
     """
-    def __init__(self,name='0x0',dim=2,xmin=None,xmax=None,file=None,parent=None,data=None):
+    def __init__(self,name='0x0',dim=2,xmin=None,xmax=None,file=None,parent=None,data=Empty()):
         """
             name is the hexadecimal chain of children indices that
             traces the node back to the root
@@ -56,6 +54,7 @@ class Node():
         self.global_index = self.get_global_index(name)
         self.dx = [(xo-xi)*2.**(-self.global_index[0]) for xi,xo in zip(self.xmin,self.xmax)]
         self.coords = self.get_coords()
+        
     def save(self,file):
         """
             Write this node to the hdf5 group/file.
