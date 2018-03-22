@@ -45,7 +45,9 @@ def refine(tree,tol=.8,eps=.01,show=False,**kargs):
                   leaf_func = lambda x: refinement_check(x,tol=tol,eps=eps,**kargs))
     print("Enforcing neighbors")
     for lvl in range(depth+1)[::-1]:
-        tree.walk(target_level=lvl,leaf_func=lambda x: refinement_check(x,criteria=neighbor_check))
+        tree.walk(target_level=lvl,leaf_func = neighbor_check)
+#    for lvl in range(depth+1)[::-1]:
+#        tree.walk(target_level=lvl,leaf_func=lambda x: refinement_check(x,criteria=neighbor_check))
     if show:
         plot(tree,q='d',grid=True,rflag=True)
     
@@ -53,13 +55,26 @@ def refine(tree,tol=.8,eps=.01,show=False,**kargs):
     return total
 
 
-def neighbor_check(leaf,neighbors,**kargs):
-    res = False
-    for n in neighbors:  
+def neighbor_check(node,**kargs):
+    """Check that if a coarser neighbor refined we also refine."""
+    if not node.rflag:
+        return
+    _,_,_,neighbors = node.find_neighbors()
+    
+    for n in neighbors:
         if n is not None:
-            if leaf.global_index[0] < n.global_index[0]:    
-                res |= n.rflag
-    return res,0
+            if n.leaf:
+                n.rflag = True
+    
+    
+    
+#def neighbor_check(leaf,neighbors,**kargs):
+#    res = False
+#    for n in neighbors:  
+#        if n is not None:
+#            if leaf.global_index[0] < n.global_index[0]:    
+#                res |= n.rflag
+#    return res,0
 
 
 
@@ -69,7 +84,7 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
                       min_value=1e-8,reverse=False,**kargs):
 
     total_neighbors = 3**leaf.dim
-    ans = [False]*total_neighbors
+    #ans = [False]*total_neighbors
 
     u = np.zeros((total_neighbors,))
 
@@ -114,16 +129,36 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
         iL = ifunc(iL)
         iR = ifunc(iR)
         numerator += (u[iR] - 2*u[iC] + u[iL])**2
-        denominator += (abs(u[iR]-u[iC]) + abs(u[iL]-u[iC]) + eps*abs(u[iL] + 2*u[iC] + u[iR]))**2
+        for j in range(i+1,leaf.dim):
+            jRR = [1]*leaf.dim
+            jLL = [1]*leaf.dim
+            jLR = [1]*leaf.dim
+            jRL = [1]*leaf.dim
+            jRR[i] += 1
+            jRR[j] += 1
+            jLL[i] -= 1
+            jLL[j] -= 1
+            jLR[i] -= 1
+            jLR[j] += 1
+            jRL[i] += 1
+            jRL[j] -= 1
+            jRR = ifunc(jRR)
+            jLL = ifunc(jLL)
+            jRL = ifunc(jRL)
+            jLR = ifunc(jLR)
+            numerator += (.5*( u[jRR] + u[jLL] - u[jRL] - u[jLR]))**2
+            
+        denominator += (abs(u[iR]-u[iC]) + abs(u[iL]-u[iC]) + eps*(abs(u[iL]) -2*abs(u[iC]) + abs(u[iR])))**2
     #if corners:
     #numerator += (.5*abs( u[2,2] + u[0,0] - u[0,2] - u[2,0]))**2
 
-
-    resx = np.sqrt(numerator/denominator)
-    if abs(numerator) < min_value and abs(denominator) < min_value:
-        resx = 0.
     if abs(denominator) < min_value:
         resx = 0.
+    else:
+        resx = np.sqrt(numerator/denominator)
+#    if abs(numerator) < min_value and abs(denominator) < min_value:
+#        resx = 0.
+    
 
     ans =  resx >= tol
     if reverse:
@@ -170,6 +205,8 @@ def refinement_check(leaf,criteria=refinement_lohner,**kargs):
     
     for node in final_list:
         if node is not None:
-            node.rflag  |= res
+            if node.leaf:
+                node.rflag  |= res
+            
 
     return res,value

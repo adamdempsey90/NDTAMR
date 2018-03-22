@@ -1,7 +1,8 @@
 import numpy as np
+import copy
 
 class SimpleTest2D():
-    cols=['x','y','z']
+    cols=['x','y','d']
     def __init__(self,coords=(0,0),file=None,data=None):
         self.xc,self.yc = coords
         if data is not None:
@@ -14,12 +15,20 @@ class SimpleTest2D():
             for c in self.cols:
                 setattr(self,c,file[c][...])
     def func(self):
-        x = (self.xc-.5)*10
-        y = (self.yc-.5)*10
-        r2 = x**2 + y**2
-        return (1 - (5./3-1) * 5**2 /(8*5./3*np.pi**2) * np.exp(1.-r2))**(1./(5./3-1))
+        
+        cx = .65 + .5* 2.**(-8)
+        cy = .65 + + .5* 2.**(-8)
+        s = .1
+        res = np.exp(-((self.xc-cx)**2+(self.yc-cy)**2)/(2*s**2))
+        cx = .3 + .5* 2.**(-8)
+        cy = .3 + .5* 2.**(-8)
+        s = .1
+        res += np.exp(-((self.xc-cx)**2+(self.yc-cy)**2)/(2*s**2))
+        
+    
+        return res
     def get_refinement_data(self):
-        return self.z
+        return self.d
     def copy(self):
         import copy
         return copy.copy(self)
@@ -27,7 +36,23 @@ class SimpleTest2D():
         grp = file.create_group('Data')
         for c in self.cols:
             grp.create_dataset(c,data=getattr(self,c))
-
+    def __rmul__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d *= val
+        return newdat
+    def __mul__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d *= val
+        return newdat
+    
+    def __add__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d += val.d
+        return newdat
+    def __radd__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d += val.d
+        return newdat
 class SpiralTest2D():
     cols=['x','y','d']
     def __init__(self,coords=(0,0),file=None,data=None):
@@ -61,8 +86,25 @@ class SpiralTest2D():
         grp = file.create_group('Data')
         for c in self.cols:
             grp.create_dataset(c,data=getattr(self,c))
+    def __rmul__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d *= val
+        return newdat
+    def __mul__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d *= val
+        return newdat
+    
+    def __add__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d += val.d
+        return newdat
+    def __radd__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d += val.d
+        return newdat
 class SpiralTest3D():
-    cols=['xc','yc','zc','d']
+    cols=['x','y','z','d']
     def __init__(self,coords=(0,0,0),file=None,data=None):
         self.xc,self.yc,self.zc = coords
         self.d = 0.
@@ -95,3 +137,20 @@ class SpiralTest3D():
         grp = file.create_group('Data')
         for c in self.cols:
             grp.create_dataset(c,data=getattr(self,c))
+    def __rmul__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d *= val
+        return newdat
+    def __mul__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d *= val
+        return newdat
+    
+    def __add__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d += val.d
+        return newdat
+    def __radd__(self,val):
+        newdat = copy.deepcopy(self)
+        newdat.d += val.d
+        return newdat

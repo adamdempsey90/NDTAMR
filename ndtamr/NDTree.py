@@ -8,7 +8,7 @@ class Node():
         Nodes either point to their children or they have no
         children and instead hold some data.
     """
-    def __init__(self,name='0x0',dim=2,file=None,parent=None,data=None):
+    def __init__(self,name='0x0',dim=2,xmin=None,xmax=None,file=None,parent=None,data=None):
         """
             name is the hexadecimal chain of children indices that
             traces the node back to the root
@@ -16,6 +16,8 @@ class Node():
             0x00x5, and the 7th child of the 3rd child of the root
             would be 0x00x30x7
         """
+        
+        self.args = {'dim':dim,'xmin':xmin,'xmax':xmax}
         self.dim = dim
         self.fmt = '0{:d}b'.format(dim)
 
@@ -28,6 +30,14 @@ class Node():
         self.child = [None]*self.nchildren
         self.file = file
         self.data = data
+        
+        self.xmin = xmin
+        self.xmax = xmax
+        
+        if self.xmin is None:
+            self.xmin = [0]*self.dim
+        if self.xmax is None:
+            self.xmax = [0]*self.dim
 
 
     #   Take binary number and return the index relative to parent
@@ -44,35 +54,38 @@ class Node():
         self.child_index ={i:self.index_from_bin(self.tobin(i)) for i in range(self.nchildren)}
 
         self.global_index = self.get_global_index(name)
-#    def save(self,file):
-#        """
-#            Write this node to the hdf5 group/file.
-#        """
-#        grp = file.create_group(self.indx[-1])
-#        if self.leaf:
-#            # We are a leaf, so we should dump our data
-#            dset = grp.create_group('Data')
-#            self.data.save(dset)
-#        else:
-#            # We are not a group, so call the children
-#            for c in self.child:
-#                c.save(grp)
-#        return
-#    def build(self,f):
-#        """
-#            Look in the hdf5 group f for child cells
-#        """
-#        for i in range(self.nchildren):
-#            try:
-#                grp = f[hex(i)]
-#                self.leaf = False
-#                self.child[i] = Node(self.name+hex(i),parent=self,file=grp)
-#                self.child[i].build(grp)
-#            except KeyError:
-#                self.leaf = True
-#                self.datastr = self.name + '/' + hex(i) + '/Data'
-#                self.data=Data(fname=f['Data'],node=self)
-#        return
+        self.dx = [(xo-xi)*2.**(-self.global_index[0]) for xi,xo in zip(self.xmin,self.xmax)]
+        self.coords = self.get_coords()
+    def save(self,file):
+        """
+            Write this node to the hdf5 group/file.
+        """
+        
+        gname = '0x' + self.name.split('0x')[-1]
+        grp = file.create_group(gname)
+        if self.leaf:
+            # We are a leaf, so we should dump our data
+            dset = grp.create_group('Data')
+            self.data.save(dset)
+        else:
+            # We are not a leaf, so call the children
+            for c in self.child:
+                c.save(grp)
+        return
+    def build(self,f):
+        """
+            Look in the hdf5 group f for child cells
+        """
+        for i in range(self.nchildren):
+            try:
+                grp = f[hex(i)]
+                self.leaf = False
+                self.child[i] = Node(self.name+hex(i),parent=self,file=grp,**self.args)
+                self.child[i].build(grp)
+            except KeyError:
+                self.leaf = True
+                self.data=Data(coords=self.coords,fname=f['Data'],node=self)
+        return
     def get_local_index(self,name):
         """
             Get the local index relative to the parent from the name
@@ -93,12 +106,9 @@ class Node():
         names = name.split('0x')[1:]
 
         level = len(names)-1
-        #print('Global',glindx)
         for n in name.split('0x')[1:]:
             lindx = self.get_local_index(n)
-           # print('Local',lindx)
             glindx = [2*g+i for g,i in zip(glindx,lindx)]
-           # print('New global',glindx)
         return (level,) + tuple(glindx)
     def move_index_up(self,indx):
         """
@@ -130,9 +140,7 @@ class Node():
         glindx = indx[1:]
 
         while level > 0:
-            #print(glindx)
             glindx, n = self.move_index_up(glindx)
-            #print(glindx,n)
             name.append(n)
             level -= 1
         return hex(0) + ''.join(name[::-1])
@@ -140,7 +148,7 @@ class Node():
         """
             Return a copy of this node
         """
-        return Node(name=self.name,dim=self.dim,data=self.data)
+        return Node(name=self.name,parent=self.parent,data=self.data,**self.args)
     def deepcopy(self):
         """
             Deep copy of this node
@@ -162,14 +170,14 @@ class Node():
         new_tree =  self.deepcopy()
         self.remove()
         return new_tree
-    def insert(self,name): 
+    def insert(self,name,data=None): 
         """
             Insert a new point in the tree.
             This is the same as find, but will
             grow the tree to accommodate the new point.
         """
         
-        return self.find(name,insert=True)
+        return self.find(name,insert=True,data=data)
 
 
     
@@ -183,9 +191,9 @@ class Node():
             mydata = None
         else:
             mydata = self.data.copy()
-        self.child[0] = Node(self.name+hex(0),dim=self.dim,parent=self,data=mydata)
+        self.child[0] = Node(self.name+hex(0),parent=self,data=mydata,**self.args)
         for i in range(1,self.nchildren):
-            self.child[i] = Node(self.name+hex(i),dim=self.dim,parent=self,data=None)
+            self.child[i] = Node(self.name+hex(i),parent=self,data=None,**self.args)
         if return_children:
             return self.child
         
@@ -199,7 +207,7 @@ class Node():
             Move down the tree to child i
         """
         return self.child[i]
-    def walk(self,printname=False,leaf_func=None,node_func=None, target_level=None,
+    def walk(self,leaf_func=None,node_func=None, target_level=None,
              maxlevel=np.infty):
         """
             Recursively walk the tree.
@@ -213,8 +221,6 @@ class Node():
             if target_level is None:
                 if leaf_func is not None:
                     leaf_func(self)
-                if printname:
-                    print(self)
             else:
                 if self.global_index[0] == target_level:
                     if leaf_func is not None:
@@ -223,8 +229,7 @@ class Node():
         if node_func is not None:
             node_func(self)
         for c in self.child:
-            c.walk(printname=printname,
-                    leaf_func=leaf_func,node_func=node_func,
+            c.walk(leaf_func=leaf_func,node_func=node_func,
                    target_level=target_level,maxlevel=maxlevel)
     def depth(self):
         """
@@ -234,8 +239,16 @@ class Node():
         func = lambda x: res.append(x.global_index[0])
         self.walk(leaf_func=func)
         return max(res)
-
-    def find(self,name,insert=False):
+    def query(self,point):
+        """Find the leaf closest to the desired point"""
+        
+        lvl = self.depth() + 1
+        indx = [lvl] +  [int((p-xi)/( (xo-xi)*2.**(-lvl))) for p,xi,xo in zip(point,self.xmin,self.xmax)]
+        name = self.get_name(indx)
+        leaf = self.find(name)
+        return leaf
+        
+    def find(self,name,insert=False,**kargs):
         """
            Find the next step towards the node given
            by name.
@@ -250,7 +263,6 @@ class Node():
 
         if self.name == name:
             # Found it!
-            #print('Node ', self.name, 'FOUND ',name)
             return self
         if my_level < target_level:
             # It's below us so we need to determine which direction to go
@@ -258,23 +270,18 @@ class Node():
             if self.name == new_name:
                 # It's one of our descendents
                 child = names[my_level+1:][0]
-                #print('Node ', self.name, ' is going to child ',child)
                 if self.leaf:
                     # Point doesn't exist currently  
-                    if not insert:
-                        #print(name,'is below this LEAF',self.name)
+                    if insert:
+                        self.split()
+                    else:
                         return self
-                    #print('Node', self.name, 'SPLITS') 
-                    self.split()
-                    #print(self.child)
-                #print('Node',self.name,'MOVES DOWN to ',child)
-                return self.down(int(child,base=16)).find(name,insert=insert)
+                return self.down(int(child,base=16)).find(name,insert=insert,**kargs)
         # It's not below us, so move up
-        #print('Node ', self.name, 'MOVES UP',name)
+
         if self.parent is None:
-            #print('{} is not in the tree!'.format(name))
             return None
-        return self.up().find(name,insert=insert)
+        return self.up().find(name,insert=insert,**kargs)
     def find_neighbors(self):
         """
             Find the neighbors and their parents.
@@ -294,7 +301,7 @@ class Node():
         upper_neighbors = [None]*total_neighbors
         for i,ind in enumerate(neighbor_indices):
             # Check that the point is inside the domain
-            if all(j>=0 for j in ind): 
+            if all(j>=0 for j in ind) and all(j<2**ind[0] for j in ind[1:]): 
                 n = self.get_name(ind)
                 node = self.find(n)
                 if node.name == n: 
@@ -308,29 +315,17 @@ class Node():
 
         return offsets, neighbor_indices,neighbors, upper_neighbors
 
-    def get_dx(self,xmin=0,xmax=1):
-        """
-            Return the spacing for this level
-        """
-        dx = 2.**(-self.global_index[0])
-        return dx*(xmax-xmin)
         
-        
-        
-    def get_coords(self,xmin=None,xmax=None,shift=False):
+    def get_coords(self,shift=False):
         """
             Return the coordinates for this node.
             xmin and xmax are the extent of the entire domain 
             and default to [0,1]
         """
-        if xmin is None:
-            xmin=[0]*self.dim
-        if xmax is None:
-            xmax=[1]*self.dim
         dx = 2.**(-self.global_index[0])
         indx = self.global_index[1:]
         shift = .5 if shift else 0
-        return [(i+shift)*dx*(xo-xi) + xi for i,xi,xo in zip(indx,xmin,xmax)]
+        return [(i+shift)*dx*(xo-xi) + xi for i,xi,xo in zip(indx,self.xmin,self.xmax)]
     def list_leaves(self,attr='name',func=None):
         """
             Return a list of leaves below this node.
@@ -351,3 +346,94 @@ class Node():
         return self.name
     def __str__(self):
         return self.name
+
+def make_list(leaves,dim=2,Data=None,xmin=None,xmax=None):
+    t = Node(dim=dim,xmin=xmin,xmax=xmax)
+    
+    for name in leaves:
+        t.insert(name)
+    
+    if Data is not None:
+        t.walk(leaf_func=lambda x: setattr(x,'data',Data(coords=x.coords)))
+    return t
+    
+def make_random(nleaves,dim=2,depth=6,Data=None,xmin=None,xmax=None):
+    t = Node(dim=dim,xmin=xmin,xmax=xmax)
+    
+    curr_list = []
+    num = 0
+    while num < nleaves:
+        length = np.random.randint(depth)
+        name = hex(0) + ''.join([hex(np.random.randint(2**dim)) for i in range(length)])
+        if name not in curr_list:
+            curr_list.append(name)
+            num += 1
+            t.insert(name)
+    if Data is not None:
+        t.walk(leaf_func=lambda x: setattr(x,'data',Data(coords=x.coords)))
+    return t
+def make_uniform(dim=2,depth=6,Data=None,xmin=None,xmax=None):
+    t = Node(dim=dim,xmin=xmin,xmax=xmax)
+    for i in range(depth):
+        for n in t.list_leaves(attr='self'):
+            n.split()
+    if Data is not None:
+        t.walk(leaf_func=lambda x: setattr(x,'data',Data(coords=x.coords)))
+    return t
+def integrate(tree,q=None,dim=-1,**kargs):
+    """Integrate over one dimension of the domain.
+        This returns a new tree of one less dimension."""
+
+    def _func(leaf,dim):
+        lvl = leaf.global_index[0]
+        indx = [i for i in leaf.global_index[1:]]
+        xmin = [x for x in leaf.xmin]
+        xmax = [x for x in leaf.xmax]
+        xi = xmin.pop(dim)
+        xo = xmax.pop(dim)
+        weight = (xo-xi) * 2.**(-lvl)
+        k = indx.pop(dim)
+        z = xi + weight*k
+        if leaf.data is not None:
+            data = leaf.data.copy()
+        else:
+            data = None
+        newindx = [lvl] + indx
+        return newindx,weight,z,data
+        
+    maxlevel = tree.depth()
+    xmin = [x for x in tree.xmin]
+    xi = xmin.pop(dim)
+    xmax = [x for x in tree.xmax]
+    xo = xmax.pop(dim)
+    
+    lz = xo-xi
+    
+                     
+    
+    newtree = Node(dim=tree.dim-1,xmin=xmin,xmax=xmax)
+    vals = []
+    for lvl in range(maxlevel+1)[::-1]:
+        tree.walk(target_level=lvl,leaf_func=lambda x: vals.append(_func(x,dim)))
+    
+    for indx,weight,z,data in vals:
+        name = newtree.get_name(indx)
+        n = newtree.insert(name)
+#        if n.data is None:
+#            print(indx,data,data.d,n.global_index,n.data)
+#        else:
+#            print(indx,data,data.d,n.global_index,n.data,n.data.d)
+
+        dx = weight/lz
+        if data is not None:
+            data = dx*data
+            if n.data is None:
+                n.data = data.copy()
+            else:
+                n.data = n.data + data
+    return newtree
+    
+    
+    
+    
+    
