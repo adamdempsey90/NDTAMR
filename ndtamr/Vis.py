@@ -31,21 +31,12 @@ def grid_lines(node,dims=[0,1],slice=None):
 
 
 def generate_grid(node,dims=[0,1],slice=None,max_level=np.infty,save=None,):
-        
-#    xmin = np.array(node.xmin)
-#    xmax = np.array(node.xmax)
-
     lines = []
     node.walk(node_func=lambda x: lines.extend(grid_lines(x,dims=dims,slice=slice) if x.global_index[0]<max_level else [None,None]))
     
-#    xscale = xmax[dims]-xmin[dims]
-#    xstart = xmin[dims]
     grid = []
     for line in lines:
         if line is not None:
-#            grid.append( [
-#                (line[0][0]*xscale[0] + xstart[0], line[0][1]*xscale[1]+xstart[1]),
-#                (line[1][0]*xscale[0] + xstart[0],line[1][1]*xscale[1]+xstart[1])])
             grid.append( [
                 (line[0][0], line[0][1]),
                 (line[1][0],line[1][1])])
@@ -116,17 +107,49 @@ def convert_to_uniform(tree,dims=[0,1],slice=None,q=None,func=lambda x: x,**karg
                 fac = 2**(lmax-lvl)
                 res[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
         else:
-            for s in slice:
-                if s[1] >= coords[s[0]] and s[1] < coords[s[0]]+dx[s[0]]:
-                    d = func(getattr(n.data,q))
-
-                    if lvl == lmax:
-                        res[i,j] = d
-                    else:
-                        fac = 2**(lmax-lvl)
-                        res[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
+            good = all([s[1] >= coords[s[0]] and s[1] < coords[s[0]]+dx[s[0]] for s in slice])
+            if good:
+                d = func(getattr(n.data,q))
+                if lvl == lmax:
+                    res[i,j] = d
+                else:
+                    fac = 2**(lmax-lvl)
+                    res[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
     return res
+
+def get_slice(tree,dim,q,func,slice):
+    def _lfunc(n,dim,slice,q,func):
+        lvl = n.global_index[0]
+        indices = np.array(n.global_index[1:])
+        dx = np.array(n.dx)
+        coords = np.array(n.coords)
         
+        good = all([s[1] >= coords[s[0]] and s[1] < coords[s[0]]+dx[s[0]] for s in slice])
+        if good:
+            return coords[dim],func(getattr(n.data,q))
+        return None,None
+    vals = []
+    tree.walk(leaf_func = lambda x: vals.append(_lfunc(x,dim,slice,q,func)))
+    return list(filter(lambda x: not None in x,vals))
+
+def line_plot(tree,dim=0,slice=None,q=None,func=lambda x: x,fig=None,ax=None,**kargs):
+    if ax is None:
+        fig,ax = plt.subplots(figsize=(8,6))
+        
+    if tree.dim == 1:
+        vals=[]
+        tree.walk(leaf_func = lambda x: vals.append([x.coords[0], func(getattr(x.data,q))]))    
+        vals = np.array(vals)
+    else:
+        vals = np.array(get_slice(tree,dim,q,func,slice))
+
+    ax.plot(vals[:,0],vals[:,1],**kargs)
+    
+    ax.set_xlabel('$x$')
+    ax.set_ylabel(q)
+    ax.minorticks_on()
+    fig.tight_layout()
+    return fig,ax
 def plot(tree,dims=[0,1],slice=None,q=None,cmap='viridis',rflag=False,func=lambda x: x,grid=False,figsize=(6,6),fig=None,ax=None,**kargs):
     if ax is None:
         fig,ax = plt.subplots(figsize=figsize)
@@ -167,6 +190,42 @@ def plot(tree,dims=[0,1],slice=None,q=None,cmap='viridis',rflag=False,func=lambd
         grid_plot(tree,dims=dims,slice=slice,fig=fig,ax=ax,**kargs)
     fig.tight_layout()
     return fig,ax
+def contour(tree,Nconts=20,dims=[0,1],slice=None,q=None,cmap='viridis',rflag=False,func=lambda x: x,grid=False,colors='grey',figsize=(6,6),fig=None,ax=None,**kargs):
+    if ax is None:
+        fig,ax = plt.subplots(figsize=figsize)
+
+
+    xmin = np.array(tree.xmin)
+    xmax = np.array(tree.xmax)
+    xmin1 = xmin[dims]
+    xmax1 = xmax[dims]
+    
+    res = convert_to_uniform(tree,dims=dims,slice=slice,q=q,func=func)
+    
+    vmin = res.min()
+    vmax = res.max()
+    
+    ax.contour(res.T,Nconts,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin='lower',
+               vmin=vmin,vmax=vmax,cmap=cmap,**kargs)
+    
+    _create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap)
+
+  
+
+    
+    
+    ax.set_xlim((xmin1[0],xmax1[0]))
+    ax.set_ylim((xmin1[1],xmax1[1]))
+
+    ax.minorticks_on()
+    ax.set_xlabel('$x_{:d}$'.format(dims[0]+1),fontsize=20)
+    ax.set_ylabel('$x_{:d}$'.format(dims[1]+1),fontsize=20)
+    ax.tick_params(labelsize=16)
+    
+    if grid:
+        grid_plot(tree,dims=dims,colors=colors,slice=slice,fig=fig,ax=ax,**kargs)
+    fig.tight_layout()
+    return fig,ax 
 def _create_colorbar(ax,vmin,vmax,log=False,cmap='viridis',**kargs):
     import matplotlib
     import matplotlib.cm
