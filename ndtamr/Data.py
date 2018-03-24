@@ -1,9 +1,34 @@
+"""
+    The Data module contains some example classes which define the Data structure.
+"""
+from __future__ import print_function, division
 import numpy as np
-import copy
 
 class GenericData():
+    """ 
+    The generic Data class which all user Data classes must 
+    inherit from.
+    It contains functions to save/read/copy and to do mathematical
+    operations used in the integration routines.
+    """
+    data_cols = ['d']
     def __init__(self,coords=(0,0),file=None,data=None):
         self.coords = [c for c in coords]
+        self.load(file=file,data=data)
+    
+    def load(self,file=None,data=None):
+        """
+        Load any data or set it from the class function
+
+        Parameters
+        ----------
+        file : hdf5 group object 
+            If not None then this contains the data columns
+            which we want to read.
+        data : class
+            If not None then this is a class which contains
+            the data columns we want to copy.
+        """
         if data is not None:
             for c in self.data_cols:
                 setattr(self,c,getattr(data,c))
@@ -13,13 +38,31 @@ class GenericData():
         else:
             for c in self.data_cols:
                 setattr(self,c,file[c][...])
+    def func(self):
+        """Function which sets the data value"""
+        self.d = 0
     def copy(self):
+        """Copy function."""
         import copy
         return copy.copy(self)
     def save(self,file):
+        """
+        Save the contents to an hdf5 file.
+
+        Parameters
+        ----------
+        file : hdf5 group
+            The hdf5 container which we want to save in.
+        """
         grp = file.create_group('Data')
         for c in self.data_cols:
             grp.create_dataset(c,data=getattr(self,c))
+
+    def get_refinement_data(self):
+        """Returns the data column which we want to refine on."""
+        return self.d
+
+    # Below are functions to handle addition/subtraction/multiplication/division
     def __rmul__(self,val):
         newdat = copy.deepcopy(self)
         for d in newdat.data_cols:
@@ -67,19 +110,24 @@ class GenericData():
         return newdat
 
 class Empty(GenericData):
+    """
+    Simple Data class which does nothing.
+    """
     data_cols = ['d']
     def __init__(self,coords=(0,0),file=None,data=None):
         GenericData.__init__(self,coords=coords,file=file,data=data)
         self.d = 0
-    def get_refinement_data(self):
-        return self.d
 
 
 class SimpleTest2D(GenericData):
-    data_cols = ['d']    
+    """
+    2D test class which consists of two gaussians.
+    """
+    data_cols = ['value']    
     def __init__(self,coords=(0,0),file=None,data=None):
         GenericData.__init__(self,coords=coords,file=file,data=data)
     def func(self):
+        """Function which sets the data value"""
         xc,yc = self.coords
         cx = .65 + .5* 2.**(-8)
         cy = .65 + + .5* 2.**(-8)
@@ -91,14 +139,19 @@ class SimpleTest2D(GenericData):
         res += np.exp(-((xc-cx)**2+(yc-cy)**2)/(2*s**2))
         return res
     def get_refinement_data(self):
-        return self.d
+        """Returns the data column which we want to refine on."""
+        return self.value
       
 class SpiralTest2D(GenericData):
-    data_cols = ['d']
+    """
+    2D test class which consists of a one-armed spiral.
+    """
+    data_cols = ['value']
     def __init__(self,coords=(0,0),file=None,data=None):
         GenericData.__init__(self,coords=coords,file=file,data=data)
 
     def func(self):
+        """Function which sets the data value"""
         xc,yc = self.coords
         r = np.sqrt( xc**2 + yc**2)
         p = np.arctan2(yc,xc)
@@ -111,15 +164,21 @@ class SpiralTest2D(GenericData):
             res = 1
         return res
     def get_refinement_data(self):
-        return self.d
+        """Returns the data column which we want to refine on."""
+        return self.value
     
     
 class SpiralTest3D(GenericData):
-    data_cols = ['d']
+    """
+    3D test class which consists of a one-armed spiral that follows a
+    gaussian distrubtion in the vertical direction.
+    """
+    data_cols = ['value']
     def __init__(self,coords=(0,0,0),file=None,data=None):
         GenericData.__init__(self,coords=coords,file=file,data=data)
         
     def func(self):
+        """Function which sets the data value"""
         xc,yc,zc = self.coords
         r = np.sqrt( xc**2 + yc**2)
         p = np.arctan2(yc,xc)
@@ -132,4 +191,5 @@ class SpiralTest3D(GenericData):
             res = 1
         return res * np.exp(-zc**2/(2*.4**2))
     def get_refinement_data(self):
-        return self.d
+        """Returns the data column which we want to refine on."""
+        return self.value

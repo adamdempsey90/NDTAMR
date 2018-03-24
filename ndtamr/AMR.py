@@ -1,8 +1,14 @@
+"""
+    The AMR module contains functions which adaptively refine the domain.
+"""
+from __future__ import print_function, division
 import numpy as np
 from .Vis import plot
 
 def compression(tree):
-    """Print some statistics about the efficiency of the AMR grid."""
+    """
+    Print some statistics about the efficiency of the AMR grid.
+    """
     depth = tree.depth()
     nleaves = len(tree.list_leaves())
     
@@ -10,43 +16,93 @@ def compression(tree):
     print('{:d} points out of {:d}^{:d} = {:d} for full grid'.format(nleaves,2**depth,tree.dim,tot))
     print('You have saved a factor of {:.0f}'.format(tot/nleaves))
     print('With a compression factor of {:.1f}%'.format((1-nleaves/tot)*100))
+    
 def clear_refine(tree):
-    """Set all refinemnet flags to False"""
+    """
+    Set all refinemnet flags to False
+    """
     tree.walk(leaf_func=lambda x: setattr(x,'rflag',False))
 
 def start_refine(tree):
-    """Look through leaves and split if flagged for refinement."""
+    """
+    Look through leaves and split if flagged for refinement.
+    """
     
-    def do_split(x,count):
-        if x.rflag:
-            x.rflag = False
-            count.append(x.name)
-            x.split()
+    def _do_split(node,count):
+        """
+        Split the node if it is flagged for refinement.
+
+        Parameters
+        ----------
+        node : NDtree.Node
+            Node we are evaluating
+        count : list
+            The list of nodes which have been refined
+        """
+        if node.rflag:
+            node.rflag = False
+            count.append(node.name)
+            node.split()
             
     total = []
-    tree.walk(leaf_func = lambda x: do_split(x,total))
+    tree.walk(leaf_func = lambda x: _do_split(x,total))
     return len(total)
 
 def start_derefine(tree):
-    """Look through leaves and derefine if needed."""
+    """
+    Look through leaves and derefine if needed.
+    """
     
-    def do_split(x,count):
+    def _do_unsplit(x,count):
+        """
+        Unsplit the node if it is flagged for derefinement.
+
+        Parameters
+        ----------
+        node : NDtree.Node
+            Node we are evaluating
+        count : list
+            The list of nodes which have been derefined
+        """
         if x.rflag:
             count.append(x.name)
             x.remove()
             x.rflag = False
     total = []
-    tree.walk(leaf_func = lambda x: do_split(x,total))
+    tree.walk(leaf_func = lambda x: _do_unsplit(x,total))
     return len(total)
 def refine(tree,tol=.8,eps=.01,show=False,**kargs):
+    """
+    The main AMR routine which evaluates and refines 
+    each node in the tree.
+
+    Parameters
+    ----------
+    tree : NDTree.node
+        The tree we want to refine
+    tol : float
+        The tolerance level for refinement
+    eps : float
+        Helps with smoothing out flucuations in the 
+        refinement variable
+    show : bool
+        If True plot the domain showing which cells 
+        will be refined
+    **kargs :
+        Keyword arguments passed to the refinement_check function
+    
+    Returns
+    -------
+    total : int
+        The total number of refined cells
+
+    """
     depth = tree.depth()
     for lvl in range(depth+1)[::-1]:
         tree.walk(target_level=lvl,
                   leaf_func = lambda x: refinement_check(x,tol=tol,eps=eps,**kargs))
     for lvl in range(depth+1)[::-1]:
         tree.walk(target_level=lvl,leaf_func = neighbor_check)
-#    for lvl in range(depth+1)[::-1]:
-#        tree.walk(target_level=lvl,leaf_func=lambda x: refinement_check(x,criteria=neighbor_check))
     if show:
         plot(tree,q='d',grid=True,rflag=True)
     
@@ -54,8 +110,12 @@ def refine(tree,tol=.8,eps=.01,show=False,**kargs):
     return total
 
 
-def neighbor_check(node,**kargs):
-    """Check that if a coarser neighbor refined we also refine."""
+def neighbor_check(node):
+    """
+    Check that if a coarser neighbor refined we also refine.
+    This enforces that the maximum discrepency in neighbor levels
+    is one.
+    """
     if not node.rflag:
         return
     _,_,_,neighbors = node.find_neighbors()
@@ -66,35 +126,51 @@ def neighbor_check(node,**kargs):
                 n.rflag = True
     
     
-    
-#def neighbor_check(leaf,neighbors,**kargs):
-#    res = False
-#    for n in neighbors:  
-#        if n is not None:
-#            if leaf.global_index[0] < n.global_index[0]:    
-#                res |= n.rflag
-#    return res,0
-
-
-
-
-
+   
 def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
-                      min_value=1e-8,reverse=False,**kargs):
+                      min_value=1e-5,reverse=False,corners=True,**kargs):
+    """
+    The refinement criteria of L\"{o}hner (1987).
+    This function does not evaulate neighbors which are on a finer level, as
+    they should have already been evaulated.
+    The user has the option of including the cross derivative terms with the 
+    corners keyword argument.
+
+    Parameters
+    ----------
+    leaf : NDTree.node
+        The leaf node we are evaluating
+    nodes : list
+        List of neighbor leaves.
+    tol : float
+        The tolerance level for refinement
+    eps : float
+        Helps with smoothing out flucuations in the 
+        refinement variable
+    min_value : float
+        If the second derivative values are below this value then
+        we do not refine.
+    reverse : bool
+        If True then we flag the cell if it does not satisfy the 
+        refinement criteria
+    corners : bool
+        If True we include the "corner" cells in the evauluation
+    Returns
+    -------
+    res: bool
+        If True we refine this cell.
+    value: float
+        The numerical value for the refinement criteria
+        
+    """
 
     total_neighbors = 3**leaf.dim
-    #ans = [False]*total_neighbors
 
     u = np.zeros((total_neighbors,))
 
 
     u1 = leaf.data.get_refinement_data()
-#        u1 = clean_data(root.data.get_refinement_data())
-#        unst = root.data.Bools.unst
-#        inres = root.data.Bools.inres
 
-#        if unst:
-#            u1 = 180.
     for i,node in enumerate(nodes):
         if node is None:
             u[i] = u1
@@ -105,9 +181,6 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
                 print('Node',n,'failed on get_refinement_data()')
                 print(d)
                 raise
-            #inres |= nodes[i][j].data.Bools.inres
-            #if nodes[i][j].data.Bools.unst:
-            #    d = u1
 
             u[i] = d
 
@@ -128,60 +201,67 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
         iL = ifunc(iL)
         iR = ifunc(iR)
         numerator += (u[iR] - 2*u[iC] + u[iL])**2
-        for j in range(i+1,leaf.dim):
-            jRR = [1]*leaf.dim
-            jLL = [1]*leaf.dim
-            jLR = [1]*leaf.dim
-            jRL = [1]*leaf.dim
-            jRR[i] += 1
-            jRR[j] += 1
-            jLL[i] -= 1
-            jLL[j] -= 1
-            jLR[i] -= 1
-            jLR[j] += 1
-            jRL[i] += 1
-            jRL[j] -= 1
-            jRR = ifunc(jRR)
-            jLL = ifunc(jLL)
-            jRL = ifunc(jRL)
-            jLR = ifunc(jLR)
-            numerator += (.5*( u[jRR] + u[jLL] - u[jRL] - u[jLR]))**2
+        if corners:
+            for j in range(i+1,leaf.dim):
+                jRR = [1]*leaf.dim
+                jLL = [1]*leaf.dim
+                jLR = [1]*leaf.dim
+                jRL = [1]*leaf.dim
+                jRR[i] += 1
+                jRR[j] += 1
+                jLL[i] -= 1
+                jLL[j] -= 1
+                jLR[i] -= 1
+                jLR[j] += 1
+                jRL[i] += 1
+                jRL[j] -= 1
+                jRR = ifunc(jRR)
+                jLL = ifunc(jLL)
+                jRL = ifunc(jRL)
+                jLR = ifunc(jLR)
+                numerator += (.5*( u[jRR] + u[jLL] - u[jRL] - u[jLR]))**2
             
         denominator += (abs(u[iR]-u[iC]) + abs(u[iL]-u[iC]) + eps*(abs(u[iL]) -2*abs(u[iC]) + abs(u[iR])))**2
-    #if corners:
-    #numerator += (.5*abs( u[2,2] + u[0,0] - u[0,2] - u[2,0]))**2
 
     if abs(denominator) < min_value or abs(numerator) < min_value:
-        resx = 0.
+        value = 0.
     else:
-        resx = np.sqrt(numerator/denominator)
-#    if abs(numerator) < min_value and abs(denominator) < min_value:
-#        resx = 0.
+        value = np.sqrt(numerator/denominator)
     
 
-    ans =  resx >= tol
+    res =  value >= tol
     if reverse:
-        ans = not ans
+        res = not res
         
-#        ans[iC] = True
-#        for i in range(leaf.dim):
-#            iL = [1]*leaf.dim
-#            iR = [1]*leaf.dim
-#            iL[i] += 1
-#            iR[i] -= 1
-#            ans[ifunc(iL)] = True
-#            ans[ifunc(iR)] = True
 
-    return ans,resx
+    return res,value
 
 def refinement_check(leaf,criteria=refinement_lohner,**kargs):
     """
-        Check neighbors to see if this node should
-        be refined.
+    Deterimine neighbors and see if this node should be refined.
+    If the node satisfies the criteria, then we also flag all of its
+    leaf neighbors.
+
+    Parameters
+    ----------
+    leaf : NDTree.node
+        The leaf node we are evaluating
+        
+    criteria : function
+        The function which evaluates the refinement criteria.
+    **kargs :
+        Keyword arguments which are passed to the criteria function.
+
+    Returns
+    -------
+    res: bool
+        If True we refine this cell.
+    value: float
+        The numerical value for the refinement criteria
+
     """
 
     # Get neighbors
-  #  print(leaf.global_index[0],leaf.name,leaf.rflag)
     total_neighbors = 3**leaf.dim
     offsets, neighbor_indices,neighbors, upper_neighbors = leaf.find_neighbors()
 
@@ -189,14 +269,11 @@ def refinement_check(leaf,criteria=refinement_lohner,**kargs):
     final_list = [None]*total_neighbors
 
     for i in range(total_neighbors):
-#        ind = sum([j * 3**(2-k) for k,j in enumerate(i)])
 
         if upper_neighbors[i] is not None:
             node = upper_neighbors[i]
-#            node = leaf.find(upper_neighbors[i])
             if not node.leaf:
                 node = neighbors[i]
-#                node = node.find(neighbors[i])
             final_list[i] = node
 
 
