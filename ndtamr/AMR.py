@@ -43,7 +43,6 @@ def refine(tree,tol=.8,eps=.01,show=False,**kargs):
     for lvl in range(depth+1)[::-1]:
         tree.walk(target_level=lvl,
                   leaf_func = lambda x: refinement_check(x,tol=tol,eps=eps,**kargs))
-    print("Enforcing neighbors")
     for lvl in range(depth+1)[::-1]:
         tree.walk(target_level=lvl,leaf_func = neighbor_check)
 #    for lvl in range(depth+1)[::-1]:
@@ -152,7 +151,7 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
     #if corners:
     #numerator += (.5*abs( u[2,2] + u[0,0] - u[0,2] - u[2,0]))**2
 
-    if abs(denominator) < min_value:
+    if abs(denominator) < min_value or abs(numerator) < min_value:
         resx = 0.
     else:
         resx = np.sqrt(numerator/denominator)

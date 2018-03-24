@@ -1,12 +1,63 @@
 import numpy as np
 from .Data import Empty
 
+"""These are some example prolongation/restriction operators"""
+def prolongate_injection(n):
+    """Copy data to each child"""
+    if n.data is not None:
+        for c in n.child:
+            n.data = n.data.copy()
+    n.data = None
+
+def restrict_injection(n):
+    """Take the first child's data"""
+    if n.child[0].data is not None:
+        n.data = n.child[0].data.copy()
+    
+def prolongate_average(n):
+    """Evenly distribute the data to the children"""
+    if n.data is not none:
+        for c in n.child:
+            n.data = n.data / self.nchildren
+    n.data = None
+def restrict_average(n):
+    """Add up the children's data"""
+    total = None
+    for c in n.child:
+        if c.data is not None:
+            data = c.data.copy()
+            if total is None:
+                total = data
+            else:
+                total += data
+    
+def prolongate_single(n):
+    """Copy data to just the first child"""
+    if n.data is not None:
+        n.child[0].data = n.data.copy()
+    n.data = None
+def restrict_single(n):
+    """Same as restrict_injection"""
+    restrict_injection(n)
+
+def prolongate_datafunc(n):
+    """Use the function in the Data class"""
+    if n.data is not None:
+        for c in n.child:
+            c.data = c._data_class(coords=c.coords)
+def restrict_datafunc(n):
+    """Use the function in the Data class"""
+    n.data = n._data_class(coords=n.coords)
+
+            
+
 class Node():
     """
         Nodes either point to their children or they have no
         children and instead hold some data.
     """
-    def __init__(self,name='0x0',dim=2,xmin=None,xmax=None,file=None,parent=None,data=Empty()):
+    def __init__(self,name='0x0',dim=2,xmin=None,xmax=None,file=None,parent=None,data_class=Empty,
+                prolongate_func=prolongate_single,restrict_func=restrict_single):
         """
             name is the hexadecimal chain of children indices that
             traces the node back to the root
@@ -15,7 +66,8 @@ class Node():
             would be 0x00x30x7
         """
         
-        self.args = {'dim':dim,'xmin':xmin,'xmax':xmax}
+        self.args = {'dim':dim,'xmin':xmin,'xmax':xmax,'prolongate_func':prolongate_func,
+                    'restrict_func':restrict_func,'data_class':data_class}
         self.dim = dim
         self.fmt = '0{:d}b'.format(dim)
 
@@ -27,7 +79,10 @@ class Node():
         self.nchildren = 2**dim
         self.child = [None]*self.nchildren
         self.file = file
-        self.data = data
+        self._data_class = data_class
+
+        self._prolongate_func = prolongate_func
+        self._restrict_func = restrict_func
         
         self.xmin = xmin
         self.xmax = xmax
@@ -54,6 +109,8 @@ class Node():
         self.global_index = self.get_global_index(name)
         self.dx = [(xo-xi)*2.**(-self.global_index[0]) for xi,xo in zip(self.xmin,self.xmax)]
         self.coords = self.get_coords()
+        self.data = self._data_class()
+        
         
     def save(self,file):
         """
@@ -154,20 +211,35 @@ class Node():
         """
         import copy
         return copy.deepcopy(self)
-    def remove(self):
+    def restrict(self):
+        return self._restrict_func(self)
+    def prolongate(self):
+        return self._prolongate_func(self)
+    def split(self):
+        """
+            Split the node into 2^dim children, and pass the data to the
+            first born.
+            Data transfer is handled via the prolongate function
+        """
+        self.leaf=False
+        self.child[0] = Node(self.name+hex(0),parent=self,**self.args)
+        for i in range(1,self.nchildren):
+            self.child[i] = Node(self.name+hex(i),parent=self,**self.args)
+        self.prolongate()
+    def unsplit(self):
         """
             Remove the tree below this node
+            Data transfer is handled via the restrict function
         """
-        if self.child[0].data is not None:
-            self.data = self.child[0].data.copy()
+        self.restrict()
         self.child = [None]*self.nchildren
         self.leaf = True
     def pop(self):
         """
-            Same as remove(), but also returns the tree below
+            Same as unsplit(), but also returns the tree below
         """
         new_tree =  self.deepcopy()
-        self.remove()
+        self.unsplit()
         return new_tree
     def insert(self,name,data=None): 
         """
@@ -180,21 +252,7 @@ class Node():
 
 
     
-    def split(self,return_children=False):
-        """
-            Split the node into 2^dim children, and pass the data to the
-            first born.
-        """
-        self.leaf=False
-        if self.data is None:
-            mydata = None
-        else:
-            mydata = self.data.copy()
-        self.child[0] = Node(self.name+hex(0),parent=self,data=mydata,**self.args)
-        for i in range(1,self.nchildren):
-            self.child[i] = Node(self.name+hex(i),parent=self,data=None,**self.args)
-        if return_children:
-            return self.child
+
         
     def up(self):
         """
@@ -325,7 +383,7 @@ class Node():
         indx = self.global_index[1:]
         shift = .5 if shift else 0
         return [(i+shift)*dx*(xo-xi) + xi for i,xi,xo in zip(indx,self.xmin,self.xmax)]
-    def list_leaves(self,attr='name',func=None):
+    def list_leaves(self,attr='self',func=None,criteria=None):
         """
             Return a list of leaves below this node.
             What is returned is controlled by attr and func
@@ -340,6 +398,8 @@ class Node():
                 func = lambda i: getattr(i,attr)
         
         self.walk(leaf_func=lambda i: leaves.append(func(i)))
+        if criteria is not None:
+            leaves = list(filter(criteria,leaves))
         return leaves    
     def __repr__(self):
         return self.name
@@ -371,15 +431,15 @@ def make_random(nleaves,dim=2,depth=6,Data=None,xmin=None,xmax=None):
     if Data is not None:
         t.walk(leaf_func=lambda x: setattr(x,'data',Data(coords=x.coords)))
     return t
-def make_uniform(dim=2,depth=6,Data=None,xmin=None,xmax=None):
-    t = Node(dim=dim,xmin=xmin,xmax=xmax)
+def make_uniform(dim=2,depth=6,Data=None,xmin=None,xmax=None,**kargs):
+    t = Node(dim=dim,xmin=xmin,xmax=xmax,**kargs)
     for i in range(depth):
         for n in t.list_leaves(attr='self'):
             n.split()
     if Data is not None:
         t.walk(leaf_func=lambda x: setattr(x,'data',Data(coords=x.coords)))
     return t
-def integrate(tree,q=None,dim=-1,**kargs):
+def integrate(tree,dim=-1,**kargs):
     """Integrate over one dimension of the domain.
         This returns a new tree of one less dimension."""
 
@@ -418,11 +478,6 @@ def integrate(tree,q=None,dim=-1,**kargs):
     for indx,weight,z,data in vals:
         name = newtree.get_name(indx)
         n = newtree.insert(name)
-#        if n.data is None:
-#            print(indx,data,data.d,n.global_index,n.data)
-#        else:
-#            print(indx,data,data.d,n.global_index,n.data,n.data.d)
-
         dx = weight/lz
         if data is not None:
             data = dx*data

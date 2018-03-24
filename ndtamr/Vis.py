@@ -118,6 +118,8 @@ def convert_to_uniform(tree,dims=[0,1],slice=None,q=None,func=lambda x: x,**karg
     return res
 
 def get_slice(tree,dim,q,func,slice):
+    if tree.dim > 1 and slice is None:
+        slice = [(-1,0)]
     def _lfunc(n,dim,slice,q,func):
         lvl = n.global_index[0]
         indices = np.array(n.global_index[1:])
@@ -142,6 +144,8 @@ def line_plot(tree,dim=0,slice=None,q=None,func=lambda x: x,fig=None,ax=None,**k
         vals = np.array(vals)
     else:
         vals = np.array(get_slice(tree,dim,q,func,slice))
+
+        
 
     ax.plot(vals[:,0],vals[:,1],**kargs)
     
