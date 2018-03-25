@@ -119,7 +119,7 @@ class Node():
         if self.xmin is None:
             self.xmin = [0]*self.dim
         if self.xmax is None:
-            self.xmax = [0]*self.dim
+            self.xmax = [1]*self.dim
 
 
     #   Take binary number and return the index relative to parent
@@ -603,6 +603,8 @@ def make_uniform(dim=2,depth=6,Data=None,xmin=None,xmax=None,**kargs):
         Minimum coordinate values of the domain
     xmax : tuple
         Maximum coordinate values of the domain
+    **kargs : 
+        Additional keyword arguments passed to the tree
 
     Returns
     -------
