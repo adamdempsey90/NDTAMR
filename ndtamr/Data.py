@@ -62,6 +62,8 @@ class GenericData():
         """Returns the data column which we want to refine on."""
         return self.d
 
+    def __eq__(self,d2):
+        return vars(self) == vars(d2)
     # Below are functions to handle addition/subtraction/multiplication/division
     def __rmul__(self,val):
         newdat = copy.deepcopy(self)

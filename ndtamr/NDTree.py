@@ -122,17 +122,6 @@ class Node():
             self.xmax = [1]*self.dim
 
 
-    #   Take binary number and return the index relative to parent
-        self.index_from_bin = lambda x: tuple(map(int,x))
-
-    #  Take the child index and convert it to binary
-    #  Ex: 2 --> '010'
-    #      6 --> '110'
-        self.tobin = lambda x: format(x,self.fmt)
-
-    #  Take a binary number and convert it to an integer
-        self.frombin = lambda x: int(x,base=2)
-
         self.child_index ={i:self.index_from_bin(self.tobin(i)) for i in range(self.nchildren)}
 
         self.global_index = self.get_global_index(name)
@@ -140,7 +129,28 @@ class Node():
         self.coords = self.get_coords()
         self.data = self._data_class()
         
-        
+    def index_from_bin(self,bin_):
+        """
+        Take binary number and return the index relative to parent.
+        Ex. 2 -> '0b010' -> (1,0)
+        Ex. 5 -> '0b110' -> (1,1,0)
+        """
+        try:
+            return tuple(map(int,bin_))
+        except ValueError:
+            # Catch formats of '0b...'
+            bin_ = self.tobin(self.frombin(bin_))
+            return tuple(map(int,bin_))
+    def tobin(self,indx):
+        """
+        Take the child index and convert it to binary
+        Ex: 2 --> '10'
+            6 --> '110'
+        """
+        return format(indx,self.fmt)
+    def frombin(self,bin_):
+        """Take a binary number and convert it to an integer."""
+        return int(bin_,base=2)
     def save(self,file):
         """
         Write this node to the hdf5 group/file.
@@ -216,7 +226,7 @@ class Node():
         pindx : tuple
             The parent index
         name : str
-            The name of the parent 
+            The name of the child 
 
         """
         pindx = [i//2 for i in indx]
@@ -247,7 +257,8 @@ class Node():
         return hex(0) + ''.join(name[::-1])
     def copy(self):
         """Make a copy of the node."""
-        return Node(name=self.name,parent=self.parent,data=self.data,**self.args)
+        import copy
+        return copy.copy(self)
     def deepcopy(self):
         """Make a deep copy of this node"""
         import copy
@@ -282,7 +293,7 @@ class Node():
         new_tree =  self.deepcopy()
         self.unsplit()
         return new_tree
-    def insert(self,name,data=None): 
+    def insert(self,name): 
         """
         Insert a new point in the tree.
         This is the same as find, but will
@@ -292,17 +303,13 @@ class Node():
         ----------
         name : str
             Name of the point we want to insert
-            
-        data : class
-            Data for the new point
-
         Returns
         -------
         node : Node
             The node of the new point in the tree.
         """
         
-        node = self.find(name,insert=True,data=data)
+        node = self.find(name,insert=True)
         return node
 
 
@@ -319,6 +326,8 @@ class Node():
              maxlevel=np.infty):
         """
         Recursively walk the tree.
+        Before calling the _walk function we check that we're starting 
+        at the root node.
 
         Parameters
         ----------
@@ -335,6 +344,16 @@ class Node():
             Don't go further down in the tree than maxlevel
 
         """
+        if self.parent is not None:
+            root = self.find('0x0')
+            root._walk(leaf_func=leaf_func,node_func=node_func,
+                   target_level=target_level,maxlevel=maxlevel)
+        else: 
+            self._walk(leaf_func=leaf_func,node_func=node_func,
+                   target_level=target_level,maxlevel=maxlevel)
+        
+    def _walk(self,leaf_func=None,node_func=None, target_level=None,
+             maxlevel=np.infty):
         if maxlevel is not None:
             if self.global_index[0] > maxlevel:
                 return
@@ -353,8 +372,9 @@ class Node():
         if node_func is not None:
             node_func(self)
         for c in self.child:
-            c.walk(leaf_func=leaf_func,node_func=node_func,
+            c._walk(leaf_func=leaf_func,node_func=node_func,
                    target_level=target_level,maxlevel=maxlevel)
+            
     def depth(self):
         """Find the depth of the tree."""
         res = [self.global_index[0]]
@@ -506,12 +526,29 @@ class Node():
         if criteria is not None:
             leaves = list(filter(criteria,leaves))
         return leaves    
+    
+    def __eq__(self,n2):
+        """Comparison with another node"""
+        
+            
+        v1 = vars(self).copy()
+        v2 = vars(n2).copy()
+        p1 = v1.pop('parent')
+        p2 = v2.pop('parent')
+        
+        try:
+            res = p1.name == p2.name
+        except AttributeError:
+            res = p1 is None and p2 is None
+            if not res:
+                return False
+        return v1 == v2 and res 
     def __repr__(self):
         """Show the name of the node when printed to screen"""
         return self.name
     def __str__(self):
         """Show the name of the node when printed to screen"""
-        return self.__repr__(self)
+        return self.__repr__()
 
 def make_list(leaves,dim=2,Data=None,xmin=None,xmax=None):
     """
