@@ -177,6 +177,8 @@ def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
     ax.set_ylabel('$x_{:d}$'.format(dims[1]+1),fontsize=20)
     ax.tick_params(labelsize=16)
     fig.tight_layout()
+    if savefig is not None:
+        fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
 
 def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x):

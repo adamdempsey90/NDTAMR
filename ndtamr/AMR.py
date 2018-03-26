@@ -175,12 +175,15 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
         if node is None:
             u[i] = u1
         else:
-            try:
+            if not node.leaf:
+                d = node.restrict().get_refinement_data()
+            else:
                 d = node.data.get_refinement_data()
-            except:
-                print('Node',n,'failed on get_refinement_data()')
-                print(d)
-                raise
+#            try:
+#                d = node.data.get_refinement_data()
+#            except:
+#                print('Node',node,'failed on get_refinement_data()')
+#                raise
 
             u[i] = d
 

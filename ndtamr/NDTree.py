@@ -9,22 +9,24 @@ from .Data import Empty
 """These are some example prolongation/restriction operators"""
 def prolongate_injection(n):
     """Copy data to each child."""
+    data = [None]*n.nchildren
     if n.data is not None:
-        for c in n.child:
-            n.data = n.data.copy()
-    n.data = None
+        for i,c in enumerate(n.child):
+            data[i] = n.data.copy()
+    return data
 
 def restrict_injection(n):
     """Take the first child's data."""
     if n.child[0].data is not None:
-        n.data = n.child[0].data.copy()
+        return n.child[0].data.copy()
     
 def prolongate_average(n):
     """Evenly distribute the data to the children."""
+    data =[None]*n.nchildren
     if n.data is not none:
-        for c in n.child:
-            n.data = n.data / self.nchildren
-    n.data = None
+        for i,c in enumerate(n.child):
+            data[i] =  n.data / self.nchildren
+    return data
 def restrict_average(n):
     """Add up the children's data."""
     total = None
@@ -35,24 +37,28 @@ def restrict_average(n):
                 total = data
             else:
                 total += data
+    return total
     
 def prolongate_single(n):
     """Copy data to just the first child."""
+    data =[None]*n.nchildren
     if n.data is not None:
-        n.child[0].data = n.data.copy()
-    n.data = None
+        data[0] = n.data.copy()
+    return data
 def restrict_single(n):
     """Same as restrict_injection."""
-    restrict_injection(n)
+    return restrict_injection(n)
 
 def prolongate_datafunc(n):
     """Use the function in the Data class."""
+    data = [None]*n.nchildren
     if n.data is not None:
-        for c in n.child:
-            c.data = c._data_class(coords=c.coords)
+        for i,c in enumerate(n.child):
+            data[i] = c._data_class(coords=c.coords)
+    return data
 def restrict_datafunc(n):
     """Use the function in the Data class."""
-    n.data = n._data_class(coords=n.coords)
+    return n._data_class(coords=n.coords)
 
             
 
@@ -276,16 +282,19 @@ class Node():
         Data transfer is handled via the prolongate function.
         """
         self.leaf=False
-        self.child[0] = Node(self.name+hex(0),parent=self,**self.args)
-        for i in range(1,self.nchildren):
+        for i in range(self.nchildren):
             self.child[i] = Node(self.name+hex(i),parent=self,**self.args)
-        self.prolongate()
+        data = self.prolongate()
+        self.data = None
+        for i in range(self.nchildren):
+            self.child[i].data = data[i] 
+    
     def unsplit(self):
         """
         Remove the tree below this node
         Data transfer is handled via the restrict function
         """
-        self.restrict()
+        self.data = self.restrict()
         self.child = [None]*self.nchildren
         self.leaf = True
     def pop(self):
