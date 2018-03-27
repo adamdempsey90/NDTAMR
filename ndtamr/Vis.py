@@ -295,14 +295,14 @@ def _get_slice(tree,dim,q,func,slice_):
         
         good = all([s[1] >= coords[s[0]] and s[1] < coords[s[0]]+dx[s[0]] for s in slice_])
         if good:
-            return coords[dim],func(getattr(n.data,q))
+            return coords[dim],func(getattr(n.data,q)),n.rflag
         return None,None
     vals = []
     tree.walk(leaf_func = lambda x: vals.append(_lfunc(x,dim,slice_,q,func)))
     final_list = list(filter(lambda x: not None in x,vals))
     return final_list
 
-def line_plot(tree,dim=0,slice_=None,q=None,func=lambda x: x,figsize=(8,6),
+def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q=None,func=lambda x: x,figsize=(8,6),
               fig=None,ax=None,savefig=None,**kargs):
     """
     A 1D line plot for the tree.
@@ -351,14 +351,22 @@ def line_plot(tree,dim=0,slice_=None,q=None,func=lambda x: x,figsize=(8,6),
         
     if tree.dim == 1:
         vals=[]
-        tree.walk(leaf_func = lambda x: vals.append([x.coords[0], func(getattr(x.data,q))]))    
+        tree.walk(leaf_func = lambda x: vals.append([x.coords[0], func(getattr(x.data,q)),int(x.rflag)]))    
         vals = np.array(vals)
     else:
         vals = np.array(_get_slice(tree,dim,q,func,slice_))
 
         
-
-    ax.plot(vals[:,0],vals[:,1],**kargs)
+    if grid or rflag:
+        ls = kargs.pop('marker','.')
+        kargs['marker'] = ls
+        
+    if rflag:
+        ind = vals[:,2].astype(bool)
+        ax.plot(vals[:,0],vals[:,1],**kargs)
+        ax.plot(vals[ind,0],vals[ind,1],'.r')
+    else:
+        ax.plot(vals[:,0],vals[:,1],**kargs)
     
     ax.set_xlabel('$x$')
     ax.set_ylabel(q)

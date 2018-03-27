@@ -97,7 +97,7 @@ class Node():
 
     """
     def __init__(self,name='0x0',dim=2,parent=None,
-                prolongate_func=prolongate_single,restrict_func=restrict_single,
+                prolongate_func=prolongate_datafunc,restrict_func=restrict_datafunc,
                  xmin=None,xmax=None, data_class=Empty,file=None):
         
         # Store some arguments to pass easily to the children

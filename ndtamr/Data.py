@@ -120,6 +120,26 @@ class Empty(GenericData):
         GenericData.__init__(self,coords=coords,file=file,data=data)
         self.d = 0
 
+class SimpleTest1D(GenericData):
+    """
+    1D test class of a gaussian.
+    """
+    data_cols = ['value']    
+    def __init__(self,coords=(0,),file=None,data=None):
+        GenericData.__init__(self,coords=coords,file=file,data=data)
+    def func(self):
+        """Function which sets the data value"""
+        xc,= self.coords
+        cx = 0
+        cy = 0
+        s = .1
+        res = np.exp(-((xc-cx)**2)/(2*s**2))
+      
+        return res
+    def get_refinement_data(self):
+        """Returns the data column which we want to refine on."""
+        return self.value
+    
 class CircleTest2D(GenericData):
     """
     2D test class which consists of a central gaussians.

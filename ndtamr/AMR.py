@@ -3,7 +3,7 @@
 """
 from __future__ import print_function, division
 import numpy as np
-from .Vis import plot
+from .Vis import plot,line_plot
 import matplotlib.pyplot as plt
 
 def compression(tree):
@@ -67,9 +67,9 @@ def start_derefine(tree):
         count : list
             The list of nodes which have been derefined
         """
-        if x.rflag:
+        if x.rflag and x is not None:
             count.append(x.name)
-            x.remove()
+            x.parent.unsplit()
             x.rflag = False
     total = []
     tree.walk(leaf_func = lambda x: _do_unsplit(x,total))
@@ -113,7 +113,10 @@ def refine(tree,tol=.2,eps=.01,show=False,extent=2,**kargs):
         ax.hist(values,bins=100,histtype='step',lw=3,color='k')
         ax.set_xlabel('$\\epsilon$',fontsize=20)
         ax.minorticks_on()
-        plot(tree,q='value',grid=True,rflag=True)
+        if tree.dim == 1:
+            line_plot(tree,q='value',rflag=True)
+        else:
+            plot(tree,q='value',grid=True,rflag=True)
     
     total = start_refine(tree)
     return total
@@ -134,11 +137,43 @@ def neighbor_check(node,**kargs):
             if n.leaf:
                 n.rflag = True
     
-def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,ext=2):
+def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,reverse=False):
+    """
+    The refinement criteria of L\"{o}hner (1987) modified slightly as in the Flash code.
+    This function does not evaulate neighbors which are on a finer level, as
+    they should have already been evaulated.
+
+    Parameters
+    ----------
+    leaf : NDTree.node
+        The leaf node we are evaluating
+    nodes : list
+        List of neighbor leaves from get_refinement_neighbors() function
+    tol : float
+        The tolerance level for refinement
+    eps : float
+        Helps with smoothing out flucuations in the 
+        refinement variable
+    min_value : float
+        Minimum value for the denominator 
+    reverse : bool
+        If True then we flag the cell if it does not satisfy the 
+        refinement criteria
+    Returns
+    -------
+    res: bool
+        If True we (de)refine this cell.
+    value: float
+        The numerical value for the refinement criteria
+        
+    """
     
-    stride = 2*ext+1
+    total_neighbors = len(nodes)
     dim = leaf.dim
-    u = np.zeros((stride**2,))
+    # Get the extent of the stencil using total = (2*ext+1)^dim
+    ext = int( (total_neighbors**(1./dim)-1)*.5)
+    stride = 2*ext+1
+    u = np.zeros((total_neighbors,))
     for i,n in enumerate(nodes):
         if n is None:
                 u[i] = 0
@@ -163,7 +198,6 @@ def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,ext=2):
                 num += (u[ifunc(iR)] - 2*u[ifunc(iC)]+u[ifunc(iL)])**2
                 dfac = (abs(u[ifunc(iR)]-u[ifunc(iC)]) + abs(u[ifunc(iL)]-u[ifunc(iC)]))
                 dfac += eps*(au[ifunc(iR)] + 2*au[ifunc(iC)]+au[ifunc(iL)])
-
             else:
                 iLL = [ext]*dim
                 iRR = [ext]*dim
@@ -183,149 +217,33 @@ def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,ext=2):
                 dfac += abs(u[ifunc(iRR)]-u[ifunc(iLR)]) + abs(u[ifunc(iLL)]-u[ifunc(iRL)])
             den += dfac**2
     value = np.sqrt(num/max(den,min_value))
-    res = value > tol
-    return res,value
-   
-def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
-                      min_value=1e-5,reverse=False,corners=True,**kargs):
-    """
-    The refinement criteria of L\"{o}hner (1987).
-    This function does not evaulate neighbors which are on a finer level, as
-    they should have already been evaulated.
-    The user has the option of including the cross derivative terms with the 
-    corners keyword argument.
-
-    Parameters
-    ----------
-    leaf : NDTree.node
-        The leaf node we are evaluating
-    nodes : list
-        List of neighbor leaves.
-    tol : float
-        The tolerance level for refinement
-    eps : float
-        Helps with smoothing out flucuations in the 
-        refinement variable
-    min_value : float
-        If the second derivative values are below this value then
-        we do not refine.
-    reverse : bool
-        If True then we flag the cell if it does not satisfy the 
-        refinement criteria
-    corners : bool
-        If True we include the "corner" cells in the evauluation
-    Returns
-    -------
-    res: bool
-        If True we refine this cell.
-    value: float
-        The numerical value for the refinement criteria
-        
-    """
-
-    total_neighbors = 3**leaf.dim
-
-    u = np.zeros((total_neighbors,))
-
-
-    u1 = leaf.data.get_refinement_data()
-
-    for i,node in enumerate(nodes):
-        if node is None:
-            u[i] = u1
-        else:
-            if not node.leaf:
-                d = node.restrict().get_refinement_data()
-            else:
-                d = node.data.get_refinement_data()
-#            try:
-#                d = node.data.get_refinement_data()
-#            except:
-#                print('Node',node,'failed on get_refinement_data()')
-#                raise
-
-            u[i] = d
-
-    numerator = 0
-    denominator = 0
-
-
-    ifunc = lambda x: sum([j * 3**(leaf.dim-1-k) for k,j in enumerate(x)])
-
-    iC = ifunc([1]*leaf.dim)
-
-    for i in range(leaf.dim):
-        iL = [1]*leaf.dim
-        iR = [1]*leaf.dim
-        iL[i] += 1
-        iR[i] -= 1
-        
-        iL = ifunc(iL)
-        iR = ifunc(iR)
-        numerator += (u[iR] - 2*u[iC] + u[iL])**2
-        dterm = 0
-        if corners:
-            for j in range(i+1,leaf.dim):
-                jRR = [1]*leaf.dim
-                jLL = [1]*leaf.dim
-                jLR = [1]*leaf.dim
-                jRL = [1]*leaf.dim
-                jRR[i] += 1
-                jRR[j] += 1
-                jLL[i] -= 1
-                jLL[j] -= 1
-                jLR[i] -= 1
-                jLR[j] += 1
-                jRL[i] += 1
-                jRL[j] -= 1
-                jRR = ifunc(jRR)
-                jLL = ifunc(jLL)
-                jRL = ifunc(jRL)
-                jLR = ifunc(jLR)
-                numerator += (.5*( u[jRR] + u[jLL] - u[jRL] - u[jLR]))**2
-                dterm += (.5*( abs(u[jRR]) + abs(u[jLL]) - abs(u[jRL]) - abs(u[jLR])))**2
-            
-        denominator += (2*abs(u[iR]-u[iC]) + 2*abs(u[iL]-u[iC]) + eps*(abs(u[iL]) -2*abs(u[iC]) + abs(u[iR])))**2
-
-    if abs(denominator) < min_value or abs(numerator) < min_value:
-        value = 0.
-    else:
-        value = np.sqrt(numerator/denominator)
     
-
-    res =  value >= tol
     if reverse:
-        res = not res
-        
-
+        res = value <= tol
+    else:
+        res = value > tol
     return res,value
-
-def refinement_check(leaf,criteria=refinement_flash,extent=2,**kargs):
+ 
+def get_refinement_neighbors(leaf,extent=2):
     """
-    Deterimine neighbors and see if this node should be refined.
-    If the node satisfies the criteria, then we also flag all of its
-    leaf neighbors.
+    Get the list of neighbors used for refinement.
+    This combines the neighbor and upper_neighbor list into 
+    one final list of neighbors
 
     Parameters
     ----------
     leaf : NDTree.node
         The leaf node we are evaluating
         
-    criteria : function
-        The function which evaluates the refinement criteria.
-    **kargs :
-        Keyword arguments which are passed to the criteria function.
+    extent : int
+        The extent of the stencil, -extent,...,0,...,extent
 
     Returns
     -------
-    res: bool
-        If True we refine this cell.
-    value: float
-        The numerical value for the refinement criteria
+    final_list : list
+        The final list of neighbors
 
     """
-
-    # Get neighbors
     offsets, neighbor_indices,neighbors, upper_neighbors = leaf.find_neighbors(extent=extent)
     total_neighbors = len(neighbors)
 
@@ -339,9 +257,39 @@ def refinement_check(leaf,criteria=refinement_flash,extent=2,**kargs):
             if not node.leaf:
                 node = neighbors[i]
             final_list[i] = node
+    return final_list
+    
+def refinement_check(leaf,criteria=refinement_flash,extent=2,**kargs):
+    """
+    Deterimine neighbors and see if this node should be refined.
+    If the node satisfies the criteria, then we also flag all of its
+    leaf neighbors.
 
+    Parameters
+    ----------
+    leaf : NDTree.node
+        The leaf node we are evaluating
+        
+    criteria : function
+        The function which evaluates the refinement criteria.
+    extent : int
+        The extent of the stencil, -extent,...,0,...,extent
+    **kargs :
+        Keyword arguments which are passed to the criteria function.
 
-    res,value = criteria(leaf,final_list,ext=extent,**kargs)
+    Returns
+    -------
+    res: bool
+        If True we refine this cell.
+    value: float
+        The numerical value for the refinement criteria
+
+    """
+
+    # Get neighbors
+
+    final_list = get_refinement_neighbors(leaf,extent=extent)
+    res,value = criteria(leaf,final_list,**kargs)
     
     for node in final_list:
         if node is not None:
