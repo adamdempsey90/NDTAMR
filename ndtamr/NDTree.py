@@ -452,7 +452,7 @@ class Node():
         if self.parent is None:
             return None
         return self.up().find(name,insert=insert)
-    def find_neighbors(self):
+    def find_neighbors(self,extent=1):
         """
         Find the neighbors and their parents.
         Note that this only finds neighbors with levels <= our level
@@ -461,8 +461,10 @@ class Node():
         level = self.global_index[0]
         indx = self.global_index[1:]
 
-        total_neighbors = 3**self.dim
-        offsets = list(itertools.product([-1,0,1],repeat=self.dim))
+        
+        stencil = list(range(-extent,extent+1))
+        total_neighbors = len(stencil)**self.dim
+        offsets = list(itertools.product(stencil,repeat=self.dim))
         
 
         neighbor_indices = [(level,)+tuple([x+j for j,x in zip(i,indx)]) for i in offsets]

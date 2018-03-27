@@ -431,8 +431,9 @@ def plot(tree,dims=[0,1],slice_=None,q=None,cmap='viridis',rflag=False,func=lamb
     xmax1 = xmax[dims]
     
     res = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func)
-    
-    ax.imshow(res.T,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin='lower',interpolation='none',cmap=cmap)
+    origin = kargs.pop('origin','lower')
+    interpolation = kargs.pop('interpolation','none')
+    ax.imshow(res.T,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin=origin,interpolation=interpolation,cmap=cmap,**kargs)
     
     _create_colorbar(ax,vmin=res.min(),vmax=res.max(),cmap=cmap)
 

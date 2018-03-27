@@ -4,6 +4,7 @@
 from __future__ import print_function, division
 import numpy as np
 from .Vis import plot
+import matplotlib.pyplot as plt
 
 def compression(tree):
     """
@@ -13,9 +14,10 @@ def compression(tree):
     nleaves = len(tree.list_leaves())
     
     tot = (2**depth)**tree.dim
+    
     print('{:d} points out of {:d}^{:d} = {:d} for full grid'.format(nleaves,2**depth,tree.dim,tot))
-    print('You have saved a factor of {:.0f}'.format(tot/nleaves))
-    print('With a compression factor of {:.1f}%'.format((1-nleaves/tot)*100))
+    print('You have saved a factor of {:.2f}'.format(tot/nleaves))
+    print('With a compression factor of {:.2f}%'.format((1-nleaves/tot)*100))
     
 def clear_refine(tree):
     """
@@ -46,6 +48,7 @@ def start_refine(tree):
             
     total = []
     tree.walk(leaf_func = lambda x: _do_split(x,total))
+
     return len(total)
 
 def start_derefine(tree):
@@ -71,7 +74,7 @@ def start_derefine(tree):
     total = []
     tree.walk(leaf_func = lambda x: _do_unsplit(x,total))
     return len(total)
-def refine(tree,tol=.8,eps=.01,show=False,**kargs):
+def refine(tree,tol=.2,eps=.01,show=False,extent=2,**kargs):
     """
     The main AMR routine which evaluates and refines 
     each node in the tree.
@@ -98,34 +101,90 @@ def refine(tree,tol=.8,eps=.01,show=False,**kargs):
 
     """
     depth = tree.depth()
+    values = []
     for lvl in range(depth+1)[::-1]:
         tree.walk(target_level=lvl,
-                  leaf_func = lambda x: refinement_check(x,tol=tol,eps=eps,**kargs))
+                  leaf_func = lambda x: values.append(refinement_check(x,tol=tol,eps=eps,extent=extent,**kargs)[1]))
     for lvl in range(depth+1)[::-1]:
-        tree.walk(target_level=lvl,leaf_func = neighbor_check)
+        tree.walk(target_level=lvl,leaf_func = lambda x: neighbor_check(x,extent=extent))
     if show:
-        plot(tree,q='d',grid=True,rflag=True)
+        print(min(values),max(values),np.median(values),np.mean(values))
+        fig,ax=plt.subplots(figsize=(8,6))
+        ax.hist(values,bins=100,histtype='step',lw=3,color='k')
+        ax.set_xlabel('$\\epsilon$',fontsize=20)
+        ax.minorticks_on()
+        plot(tree,q='value',grid=True,rflag=True)
     
     total = start_refine(tree)
     return total
 
 
-def neighbor_check(node):
+def neighbor_check(node,**kargs):
     """
-    Check that if a coarser neighbor refined we also refine.
+    Check that if a finer neighbor refined we also refine.
     This enforces that the maximum discrepency in neighbor levels
     is one.
     """
     if not node.rflag:
         return
-    _,_,_,neighbors = node.find_neighbors()
+    _,_,_,neighbors = node.find_neighbors(**kargs)
     
     for n in neighbors:
         if n is not None:
             if n.leaf:
                 n.rflag = True
     
+def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,ext=2):
     
+    stride = 2*ext+1
+    dim = leaf.dim
+    u = np.zeros((stride**2,))
+    for i,n in enumerate(nodes):
+        if n is None:
+                u[i] = 0
+        else:                
+            if n.data is not None:
+                u[i] = n.data.get_refinement_data()
+            else:
+                u[i] = n.restrict().get_refinement_data()
+    au = abs(u) 
+    
+    num = 0
+    den = 0
+    ifunc = lambda x: sum([l*stride**(dim-1-k) for k,l in enumerate(x)])
+    for i in range(dim):
+        for j in range(dim):
+            if i==j:
+                iL = [ext]*dim
+                iR = [ext]*dim
+                iC = [ext]*dim
+                iL[i] -= ext
+                iR[i] += ext
+                num += (u[ifunc(iR)] - 2*u[ifunc(iC)]+u[ifunc(iL)])**2
+                dfac = (abs(u[ifunc(iR)]-u[ifunc(iC)]) + abs(u[ifunc(iL)]-u[ifunc(iC)]))
+                dfac += eps*(au[ifunc(iR)] + 2*au[ifunc(iC)]+au[ifunc(iL)])
+
+            else:
+                iLL = [ext]*dim
+                iRR = [ext]*dim
+                iLR = [ext]*dim
+                iRL = [ext]*dim
+                iC = [ext]*dim
+                iLL[i] -= 1
+                iLL[j] -= 1
+                iRR[i] += 1
+                iRR[j] += 1
+                iRL[i] += 1
+                iRL[j] -= 1
+                iLR[i] -= 1
+                iLR[j] += 1
+                num += (u[ifunc(iRR)]+u[ifunc(iLL)]-u[ifunc(iLR)]-u[ifunc(iRL)])**2
+                dfac = eps*(au[ifunc(iRR)]+au[ifunc(iLL)]+au[ifunc(iLR)]+au[ifunc(iRL)])
+                dfac += abs(u[ifunc(iRR)]-u[ifunc(iLR)]) + abs(u[ifunc(iLL)]-u[ifunc(iRL)])
+            den += dfac**2
+    value = np.sqrt(num/max(den,min_value))
+    res = value > tol
+    return res,value
    
 def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
                       min_value=1e-5,reverse=False,corners=True,**kargs):
@@ -204,6 +263,7 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
         iL = ifunc(iL)
         iR = ifunc(iR)
         numerator += (u[iR] - 2*u[iC] + u[iL])**2
+        dterm = 0
         if corners:
             for j in range(i+1,leaf.dim):
                 jRR = [1]*leaf.dim
@@ -223,8 +283,9 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
                 jRL = ifunc(jRL)
                 jLR = ifunc(jLR)
                 numerator += (.5*( u[jRR] + u[jLL] - u[jRL] - u[jLR]))**2
+                dterm += (.5*( abs(u[jRR]) + abs(u[jLL]) - abs(u[jRL]) - abs(u[jLR])))**2
             
-        denominator += (abs(u[iR]-u[iC]) + abs(u[iL]-u[iC]) + eps*(abs(u[iL]) -2*abs(u[iC]) + abs(u[iR])))**2
+        denominator += (2*abs(u[iR]-u[iC]) + 2*abs(u[iL]-u[iC]) + eps*(abs(u[iL]) -2*abs(u[iC]) + abs(u[iR])))**2
 
     if abs(denominator) < min_value or abs(numerator) < min_value:
         value = 0.
@@ -239,7 +300,7 @@ def refinement_lohner(leaf,nodes,tol=.8,eps=.01,
 
     return res,value
 
-def refinement_check(leaf,criteria=refinement_lohner,**kargs):
+def refinement_check(leaf,criteria=refinement_flash,extent=2,**kargs):
     """
     Deterimine neighbors and see if this node should be refined.
     If the node satisfies the criteria, then we also flag all of its
@@ -265,8 +326,8 @@ def refinement_check(leaf,criteria=refinement_lohner,**kargs):
     """
 
     # Get neighbors
-    total_neighbors = 3**leaf.dim
-    offsets, neighbor_indices,neighbors, upper_neighbors = leaf.find_neighbors()
+    offsets, neighbor_indices,neighbors, upper_neighbors = leaf.find_neighbors(extent=extent)
+    total_neighbors = len(neighbors)
 
     # Even if already tagged, still need to check new neighbors
     final_list = [None]*total_neighbors
@@ -280,7 +341,7 @@ def refinement_check(leaf,criteria=refinement_lohner,**kargs):
             final_list[i] = node
 
 
-    res,value = criteria(leaf,final_list,**kargs)
+    res,value = criteria(leaf,final_list,ext=extent,**kargs)
     
     for node in final_list:
         if node is not None:
