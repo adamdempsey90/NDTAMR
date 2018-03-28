@@ -3,6 +3,7 @@
 """
 from __future__ import print_function, division
 import numpy as np
+import copy
 
 class GenericData():
     """ 
@@ -115,10 +116,10 @@ class Empty(GenericData):
     """
     Simple Data class which does nothing.
     """
-    data_cols = ['d']
+    data_cols = ['value']
     def __init__(self,coords=(0,0),file=None,data=None):
         GenericData.__init__(self,coords=coords,file=file,data=data)
-        self.d = 0
+        self.value = 0
 
 class SimpleTest1D(GenericData):
     """

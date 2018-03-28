@@ -1,4 +1,6 @@
-from ..NDTree import Node
+from ..NDTree import *
+from ..Data import CircleTest2D as Data
+from ..Data import Empty as Empty 
 class TestNode():
 
 #    def test_build(self):
@@ -243,6 +245,14 @@ class TestNode():
         assert n.name == '0x00x20x1'
         n = t.query((0.5,0.5))
         assert n.name == '0x00x30x0'
+    def test_repr(self):
+        t = Node(dim=2)
+        t.split()
+        assert str(t.child[0])=='0x00x0'
+        assert str(t.child[1])=='0x00x1'
+        assert str(t.child[2])=='0x00x2'
+        assert str(t.child[3])=='0x00x3'
+        
 #    def test_walk(self):
         
 #
@@ -251,3 +261,136 @@ class TestNode():
 #
 #
 #
+
+def test_prolongate_injection():
+    t = Node(dim=2,data_class=Data,
+             prolongate_func=prolongate_injection,
+            restrict_func=restrict_injection)
+    ans = t.data.copy()
+    t.split()
+    assert all([c.data == ans for c in t.child])
+    t = Node(dim=2,
+             prolongate_func=prolongate_injection,
+            restrict_func=restrict_injection)
+    ans = t.data.copy()
+    t.split()
+    assert all([c.data == Empty()  for c in t.child])
+    
+def test_restrict_injection():
+    t = Node(dim=2,data_class=Data,
+             prolongate_func=prolongate_injection,
+            restrict_func=restrict_injection)
+    t.split()
+    ans = t.child[0].data.copy()
+    t.unsplit()
+    assert t.data == ans
+    
+    t = Node(dim=2,
+             prolongate_func=prolongate_injection,
+            restrict_func=restrict_injection)
+    t.split()
+    ans = t.child[0].data.copy()
+    t.unsplit()
+    assert t.data == ans
+    
+def test_prolongate_average():
+    t = Node(dim=2,data_class=Data,
+             prolongate_func=prolongate_average,
+            restrict_func=restrict_average)
+    ans = t.data.value/(2**t.dim)
+    t.split()
+    assert all([c.data.value == ans for c in t.child])
+    t = Node(dim=2,
+             prolongate_func=prolongate_average,
+            restrict_func=restrict_average)
+    ans = t.data.copy()
+    t.split()
+    assert all([c.data.value == 0  for c in t.child])
+    
+def test_restrict_average():
+    t = Node(dim=2,data_class=Data,
+             prolongate_func=prolongate_average,
+            restrict_func=restrict_average)
+    t.split()
+    ans = sum([c.data.value for c in t.child])
+    t.unsplit()
+    assert t.data.value == ans
+    
+    t = Node(dim=2,
+             prolongate_func=prolongate_average,
+            restrict_func=restrict_average)
+    t.split()
+    ans = 0
+    t.unsplit()
+    assert t.data.value == ans
+    
+    
+def test_prolongate_single():
+    t = Node(dim=2,data_class=Data,
+             prolongate_func=prolongate_single,
+            restrict_func=restrict_single)
+    ans = t.data.copy()
+    t.split()
+    assert [c.data is None for c in t.child[1:]]
+    assert t.child[0].data == ans
+    
+    t = Node(dim=2,
+             prolongate_func=prolongate_single,
+            restrict_func=restrict_single)
+    ans = t.data.copy()
+    t.split()
+    assert [c.data is None for c in t.child[1:]]
+    assert t.child[0].data == ans
+    
+def test_restrict_single():
+    t = Node(dim=2,data_class=Data,
+             prolongate_func=prolongate_single,
+            restrict_func=restrict_single)
+    t.split()
+    ans = t.child[0].data.copy() 
+    t.unsplit()
+    
+    assert t.data == ans
+    
+    t = Node(dim=2,
+             prolongate_func=prolongate_single,
+            restrict_func=restrict_single)
+    t.split()
+    ans = t.child[0].data.copy() 
+    t.unsplit()
+    assert t.data == ans
+    
+def test_prolongate_datafunc():
+    t = Node(dim=2,data_class=Data,
+             prolongate_func=prolongate_datafunc,
+            restrict_func=restrict_datafunc)
+    t.split()
+    ans = [Data(coords=(0.,0.)).func(),
+          Data(coords=(0.,.5)).func(),
+          Data(coords=(.5,0.)).func(),
+          Data(coords=(.5,.5)).func()]
+    
+    assert all([c.data.value == a for c,a in zip(t.child,ans)])
+    
+    t = Node(dim=2,
+             prolongate_func=prolongate_datafunc,
+            restrict_func=restrict_datafunc)
+    t.split()
+    assert [c.data.value == 0 for c in t.child]
+    
+def test_restrict_datafunc():
+    t = Node(dim=2,data_class=Data,
+             prolongate_func=prolongate_datafunc,
+            restrict_func=restrict_datafunc)
+    t.split()
+    ans = Data(coords=(0.,0.)).func() 
+    t.unsplit()
+    
+    assert t.data.value == ans
+    
+    t = Node(dim=2,
+             prolongate_func=prolongate_datafunc,
+            restrict_func=restrict_datafunc)
+    t.split()
+    t.unsplit()
+    assert t.data.value == 0 

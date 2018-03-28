@@ -109,10 +109,16 @@ def refine(tree,tol=.2,eps=.01,show=False,extent=2,**kargs):
         tree.walk(target_level=lvl,leaf_func = lambda x: neighbor_check(x,extent=extent))
     if show:
         print(min(values),max(values),np.median(values),np.mean(values))
-        fig,ax=plt.subplots(figsize=(8,6))
-        ax.hist(values,bins=100,histtype='step',lw=3,color='k')
-        ax.set_xlabel('$\\epsilon$',fontsize=20)
-        ax.minorticks_on()
+        fig,axes=plt.subplots(1,2,figsize=(14,6))
+        axes[0].hist(values,bins=20,histtype='step',lw=3,color='k')
+        axes[1].hist(values,bins=20,histtype='step',cumulative=True,normed=True,lw=3,color='k')
+        
+        
+        for ax in axes:
+            ax.set_xlim(0,1)
+            ax.set_xlabel('$\\epsilon$',fontsize=20)
+            ax.axvline(tol,c='k',ls='--')
+            ax.minorticks_on()
         if tree.dim == 1:
             line_plot(tree,q='value',rflag=True)
         else:
@@ -291,10 +297,12 @@ def refinement_check(leaf,criteria=refinement_flash,extent=2,**kargs):
     final_list = get_refinement_neighbors(leaf,extent=extent)
     res,value = criteria(leaf,final_list,**kargs)
     
-    for node in final_list:
-        if node is not None:
-            if node.leaf:
-                node.rflag  |= res
+    leaf.rflag = res
+    
+#    for node in final_list:
+#        if node is not None:
+#            if node.leaf:
+#                node.rflag  |= res
             
 
     return res,value

@@ -23,9 +23,9 @@ def restrict_injection(n):
 def prolongate_average(n):
     """Evenly distribute the data to the children."""
     data =[None]*n.nchildren
-    if n.data is not none:
+    if n.data is not None:
         for i,c in enumerate(n.child):
-            data[i] =  n.data / self.nchildren
+            data[i] =  n.data / n.nchildren
     return data
 def restrict_average(n):
     """Add up the children's data."""

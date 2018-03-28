@@ -47,6 +47,16 @@ def make_example_tree3(with_data=False):
         for x in c.child:
             x.split()
     return t
+def make_example_tree_uniform(depth=3,with_data=False):
+    if with_data:
+        t = Node(dim=2,data_class=SimpleTest2D,prolongate_func=prolongate_datafunc,
+                restrict_func=restrict_datafunc)
+    else:
+        t = Node(dim=2)
+    for i in range(depth):
+        for c in t.list_leaves():
+            c.split()
+    return t
 def make_example_tree1(depth=2,with_data=False):
     if with_data:
         t = Node(dim=1,xmin=(-1,),xmax=(1,),data_class=SimpleTest1D,prolongate_func=prolongate_datafunc,
@@ -78,10 +88,7 @@ def func(xc,yc):
     res += np.exp(-((xc-cx)**2+(yc-cy)**2)/(2*s**2))
     return res
 class TestAMR():
-#
-#        t = Node(dim=2,prolongate_func=data.prolongate_datafunc,
-#                restrict_func=data.restrict_datafunc,
-#                 data = data.SimpleTest2D)
+
     def test_clear_refine(self):
         t = Node(dim=2)
         t.split()
@@ -148,21 +155,23 @@ class TestAMR():
             assert all([c is None for c in leaves[i].child])
             assert leaves[i].leaf == True
 
-#    def test_refine(self):
-#        t = make_example_tree3(with_data=True)
-#        
-#        leaves = t.list_leaves()
-#        
-#        rflags = [refinement_check(leaf,tol=.6)[0] for leaf in leaves]
-#        
-#        total_ans = len(list(filter(lambda x: x,rflags)))
-#        
-#        total = refine(t)
-#        
-#        assert total == total_ans
-#        
-#        for r,leaf in zip(rflags,leaves):
-#            if 
+    def test_refine(self):
+        t = make_example_tree3(with_data=True)
+        
+        leaves = t.list_leaves()
+        
+        rflags = [refinement_check(leaf,tol=.3)[0] for leaf in leaves]
+        
+        total_ans = len(list(filter(lambda x: x,rflags)))
+        
+        total = refine(t)
+        
+        assert total == total_ans
+        
+        for r,leaf in zip(rflags,leaves):
+            if r:
+                assert leaf.leaf == False
+                assert leaf.child is not None
 
     def test_refinement_check(self):
         # Check that all neighbors get flagged
@@ -173,7 +182,7 @@ class TestAMR():
         
         res,value = refinement_check(n,tol=0,extent=2) # Guarentees a refinement
         
-        assert all([n.rflag for n in final_list])
+        assert n.rflag
         
         t = make_example_tree3(with_data=True)
         n = t.find('0x00x30x00x0')
@@ -182,7 +191,8 @@ class TestAMR():
         
         res,value = refinement_check(n,tol=0,extent=1) # Guarentees a refinement
         
-        assert all([n.rflag for n in final_list])
+        assert n.rflag
+        
 
     def test_get_refinement_neighbors(self):
         # 1D
@@ -502,7 +512,3 @@ class TestAMR():
        
         
 
-#
-#    def test_start_derefine(self):
-#
-#    def test_start_refine(self):
