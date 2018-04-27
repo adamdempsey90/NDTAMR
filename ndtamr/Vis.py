@@ -104,7 +104,7 @@ def generate_grid(node,dims=[0,1],slice_=None,max_level=np.infty,save=None):
     return grid
 
 def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
-             fig=None,ax=None,lw=1,colors='k',figsize=(6,6),save=None,savefig=None):
+             fig=None,ax=None,lw=.5,colors='grey',figsize=(6,6),save=None,savefig=None):
     """
     Draws the tree's grid.
 
@@ -302,7 +302,7 @@ def _get_slice(tree,dim,q,func,slice_):
     final_list = list(filter(lambda x: not None in x,vals))
     return final_list
 
-def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q=None,func=lambda x: x,figsize=(8,6),
+def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q='value',func=lambda x: x,figsize=(8,6),
               fig=None,ax=None,savefig=None,**kargs):
     """
     A 1D line plot for the tree.
@@ -376,7 +376,7 @@ def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q=None,func=lambda x
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
 
-def plot(tree,dims=[0,1],slice_=None,q=None,cmap='viridis',rflag=False,func=lambda x: x,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
+def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
     """
     A 2D color plot for the tree.
 
@@ -471,7 +471,7 @@ def plot(tree,dims=[0,1],slice_=None,q=None,cmap='viridis',rflag=False,func=lamb
     if savefig is not None:
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
-def contour(tree,Nconts=20,dims=[0,1],slice_=None,q=None,cmap='viridis',rflag=False,func=lambda x: x,grid=False,colors='grey',figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
+def contour(tree,Nconts=20,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,grid=False,colors='grey',figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
     """
     Draw a contour plot for the tree.
 

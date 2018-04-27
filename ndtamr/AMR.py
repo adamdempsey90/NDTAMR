@@ -108,7 +108,10 @@ def refine(tree,tol=.2,eps=.01,show=False,extent=2,**kargs):
     for lvl in range(depth+1)[::-1]:
         tree.walk(target_level=lvl,leaf_func = lambda x: neighbor_check(x,extent=extent))
     if show:
-        print(min(values),max(values),np.median(values),np.mean(values))
+        print('Minimum:', min(values))
+        print('Maximum:',max(values))
+        print('Median:',np.median(values))
+        print('Average:',np.mean(values))
         fig,axes=plt.subplots(1,2,figsize=(14,6))
         axes[0].hist(values,bins=20,histtype='step',lw=3,color='k')
         axes[1].hist(values,bins=20,histtype='step',cumulative=True,normed=True,lw=3,color='k')
