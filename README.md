@@ -2,4 +2,4 @@
 
 N-dimensional adaptive mesh refinement tree structure in Python.
 
-![alt text](spiral2c.pdf)
+![alt text](docs/images/spiral2c.pdf)
