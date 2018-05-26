@@ -12,7 +12,7 @@ class GenericData():
     It contains functions to save/read/copy and to do mathematical
     operations used in the integration routines.
     """
-    data_cols = ['d']
+    data_cols = ['value']
     def __init__(self,coords=(0,0),file=None,data=None):
         self.coords = [c for c in coords]
         self.load(file=file,data=data)
@@ -41,7 +41,7 @@ class GenericData():
                 setattr(self,c,file[c][...])
     def func(self):
         """Function which sets the data value"""
-        self.d = 0
+        self.value = 0
     def copy(self):
         """Copy function."""
         import copy
@@ -55,13 +55,13 @@ class GenericData():
         file : hdf5 group
             The hdf5 container which we want to save in.
         """
-        grp = file.create_group('Data')
+        #grp = file.create_group('Data')
         for c in self.data_cols:
-            grp.create_dataset(c,data=getattr(self,c))
+            file.create_dataset(c,data=getattr(self,c))
 
     def get_refinement_data(self):
         """Returns the data column which we want to refine on."""
-        return self.d
+        return self.value
 
     def __eq__(self,d2):
         return vars(self) == vars(d2)

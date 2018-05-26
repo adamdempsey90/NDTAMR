@@ -1,6 +1,7 @@
 from ..NDTree import *
 from ..Data import CircleTest2D as Data
 from ..Data import Empty as Empty 
+from .test_amr import make_example_tree_uniform
 class TestNode():
 
 #    def test_build(self):
@@ -394,3 +395,21 @@ def test_restrict_datafunc():
     t.split()
     t.unsplit()
     assert t.data.value == 0 
+
+def test_build_from_file():
+    import h5py
+    t = make_example_tree_uniform(depth=2,with_data=True)
+    with h5py.File('test.h5','w') as f:
+        t.save(f)
+    with h5py.File('test.h5','r') as f:
+        t2 = build_from_file(f,**t.args)
+    assert t2 == t
+    
+def test_load_linear():
+    import h5py
+    t = make_example_tree_uniform(depth=2,with_data=True)
+    with h5py.File('test.h5','w') as f:
+        save_linear(f,t)
+    with h5py.File('test.h5','r') as f:
+        t2 = load_linear(f,**t.args)
+    assert t2 == t

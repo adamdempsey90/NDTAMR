@@ -60,7 +60,7 @@ def restrict_datafunc(n):
     """Use the function in the Data class."""
     return n._data_class(coords=n.coords)
 
-            
+
 
 class Node():
     """
@@ -133,7 +133,8 @@ class Node():
         self.global_index = self.get_global_index(name)
         self.dx = [(xo-xi)*2.**(-self.global_index[0]) for xi,xo in zip(self.xmin,self.xmax)]
         self.coords = self.get_coords()
-        self.data = self._data_class()
+        self.data = self._data_class(file=file)
+ 
         
     def index_from_bin(self,bin_):
         """
@@ -157,7 +158,7 @@ class Node():
     def frombin(self,bin_):
         """Take a binary number and convert it to an integer."""
         return int(bin_,base=2)
-    def save(self,file):
+    def save(self,file,full_name=False):
         """
         Write this node to the hdf5 group/file.
 
@@ -166,10 +167,25 @@ class Node():
         file : hdf5 group
             File to write the data to.
 
-        """
+        """ 
         
-        gname = '0x' + self.name.split('0x')[-1]
+        if full_name:
+            gname = self.name
+        else:
+            gname = '0x' + self.name.split('0x')[-1]
         grp = file.create_group(gname)
+        
+        if self.parent is None:
+            from json import dumps
+            serial = {}
+            for key,val in self.args.items():
+                try:
+                    serial[key] = val.__name__
+                except AttributeError:
+                    serial[key] = val
+                
+            file.attrs['Pars'] = dumps(serial)
+            
         if self.leaf:
             # We are a leaf, so we should dump our data
             dset = grp.create_group('Data')
@@ -188,15 +204,16 @@ class Node():
         file : hdf5 file
             The file we are reading.
         """
-        for i in range(self.nchildren):
-            try:
-                grp = file[hex(i)]
-                self.leaf = False
-                self.child[i] = Node(self.name+hex(i),parent=self,file=grp,**self.args)
-                self.child[i].build(grp)
-            except KeyError:
-                self.leaf = True
-                self.data=Data(coords=self.coords,fname=file['Data'],node=self)
+        
+        try:
+            cgrps = [file[hex(i)] for i in range(self.nchildren)]
+            self.split()
+            for i in range(self.nchildren):
+                self.child[i].build(cgrps[i])
+        except KeyError:
+            self.leaf = True
+            self.data = self._data_class(coords=self.coords,file=file['Data'])
+            
         return
     def get_local_index(self,name):
         """Get the local index relative to the parent from the name."""
@@ -302,7 +319,7 @@ class Node():
         new_tree =  self.deepcopy()
         self.unsplit()
         return new_tree
-    def insert(self,name): 
+    def insert(self,name,data=None,file=None): 
         """
         Insert a new point in the tree.
         This is the same as find, but will
@@ -319,6 +336,10 @@ class Node():
         """
         
         node = self.find(name,insert=True)
+        if data is not None:
+            node.data = node._data_class(coords=node.coords,data=data)
+        if file is not None:
+            node.data = node._data_class(coords=node.coords,file=file)
         return node
 
 
@@ -561,7 +582,8 @@ class Node():
         """Show the name of the node when printed to screen"""
         return self.__repr__()
 
-def make_list(leaves,dim=2,Data=None,xmin=None,xmax=None):
+def make_list(leaves,file=None,**kargs):
+    #dim=2,Data=None,xmin=None,xmax=None):
     """
     Helper function to construct a tree from a list of leaves.
 
@@ -585,13 +607,13 @@ def make_list(leaves,dim=2,Data=None,xmin=None,xmax=None):
         The final tree
 
     """
-    t = Node(dim=dim,xmin=xmin,xmax=xmax)
     
+    t = Node('0x0',**kargs)
     for name in leaves:
-        t.insert(name)
-    
-    if Data is not None:
-        t.walk(leaf_func=lambda x: setattr(x,'data',Data(coords=x.coords)))
+        leaf = t.insert(name)
+        if file is not None:
+            leaf.load(file[name])
+
     return t
     
 def make_random(nleaves,dim=2,depth=6,Data=None,xmin=None,xmax=None):
@@ -731,6 +753,138 @@ def integrate(tree,dim=-1):
     return newtree
     
     
+def build_from_file(file,name='0x0',prolongate_func=prolongate_datafunc,restrict_func=restrict_datafunc,data_class=Empty,**kargs):
+    """
+    Build a tree from an hdf5 file. This is the reverse of the 
+    tree.save() function.
+    
+    Parameters
+    ----------
+    file: hdf5 group
+        The hdf5 group to load the tree from.
+    name: str
+        The name of the root of the tree
+    prolongate_func : function
+        The prolongate function to use.
+    restrict_func : function
+        The restrict function to use.    
+    data_class : function
+        The data class to use.    
+    **kargs : dict
+        Extra keyword arguments to pass to Node() when the tree
+        is constructed.
+    
+    Returns
+    -------
+    t : ndtamr.Node
+        The final tree.
+        
+    """ 
+    from json import loads
+    args = loads(file.attrs['Pars'])
+    
+    _data_class = args.pop('data_class')
+    new_data = _data_class != data_class.__name__
+    _prolongate_func = args.pop('prolongate_func')
+    new_prolongate = _prolongate_func != prolongate_func.__name__
+    _restrict_func = args.pop('restrict_func')
+    new_restrict = _restrict_func != restrict_func.__name__
+    
+    if new_prolongate or new_restrict or new_data:
+        print('Tree was originally built with,')
+        if new_data:
+            print(_data_class,)
+        if new_prolongate:
+            print(_prolongate_func)
+        if new_restrict:
+            print(_restrict_func)
+        
+    t = Node(name,data_class=data_class,prolongate_func=prolongate_func,
+             restrict_func=restrict_func,**args)
+    
+    t.build(file['0x0'])
     
     
+    return t
     
+def save_linear(file,tree):   
+    """
+    Save tree leaves to an hdf5 file. Rather than nested directories
+    following the tree layout, the tree is flattened to a linear
+    array of leaves.
+    
+    Parameters
+    ----------
+    file: hdf5 group
+        The hdf5 group to save the tree to.
+    tree: ndtamr.Node
+        The root of the tree to save
+        
+    """
+    from json import dumps
+
+    serial = {}
+    for key,val in tree.args.items():
+        try:
+            serial[key] = val.__name__
+        except AttributeError:
+            serial[key] = val
+
+    file.attrs['Pars'] = dumps(serial)
+    for leaf in tree.list_leaves(attr='self'):
+        print(leaf)
+        leaf.save(file,full_name=True)
+    return
+def load_linear(file,name='0x0',prolongate_func=prolongate_datafunc,restrict_func=restrict_datafunc,data_class=Empty,**kargs):
+    """
+    Load tree leaves from an hdf5 file. 
+    This is the reverse of the save_linear() function.
+    
+    Parameters
+    ----------
+    file: hdf5 group
+        The hdf5 group to load the tree from.
+    name: str
+        The name of the root of the tree
+    prolongate_func : function
+        The prolongate function to use.
+    restrict_func : function
+        The restrict function to use.    
+    data_class : function
+        The data class to use.    
+    **kargs : dict
+        Extra keyword arguments to pass to Node() when the tree
+        is constructed.
+    
+    Returns
+    -------
+    t : ndtamr.Node
+        The final tree.
+        
+    """    
+    from json import loads
+    args = loads(file.attrs['Pars'])
+    _data_class = args.pop('data_class')
+    new_data = _data_class != data_class.__name__
+    _prolongate_func = args.pop('prolongate_func')
+    new_prolongate = _prolongate_func != prolongate_func.__name__
+    _restrict_func = args.pop('restrict_func')
+    new_restrict = _restrict_func != restrict_func.__name__
+    
+    if new_prolongate or new_restrict or new_data:
+        print('Tree was originally built with,')
+        if new_data:
+            print(_data_class,)
+        if new_prolongate:
+            print(_prolongate_func)
+        if new_restrict:
+            print(_restrict_func)
+    t = Node(name,data_class=data_class,prolongate_func=prolongate_func,
+             restrict_func=restrict_func,**args)
+    
+    leaves = []
+    file.visit(leaves.append)
+    for leaf in leaves:
+        if '/' not in leaf:
+            node = t.insert(leaf,file=file[leaf]['Data'])
+    return t
