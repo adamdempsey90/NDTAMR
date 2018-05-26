@@ -1,4 +1,3 @@
 matplotlib
 numpy
 h5py
-json
