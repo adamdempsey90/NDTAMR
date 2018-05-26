@@ -1,7 +1,7 @@
 from ..NDTree import *
 from ..Data import CircleTest2D as Data
 from ..Data import Empty as Empty 
-from .test_amr import make_example_tree_uniform
+from .test_AMR import make_example_tree_uniform
 class TestNode():
 
 #    def test_build(self):
