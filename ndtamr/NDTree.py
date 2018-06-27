@@ -733,9 +733,13 @@ def integrate(tree,dim=-1):
     
     lz = xo-xi
     
-                     
-    
-    newtree = Node(dim=tree.dim-1,xmin=xmin,xmax=xmax)
+    args = {}
+    for key,val in tree.args.items():
+        if key not in ['dim','xmax','xmin']:
+	        args[key] = val
+        
+		
+    newtree = Node(dim=tree.dim-1,xmin=xmin,xmax=xmax,**args)
     vals = []
     for lvl in range(maxlevel+1)[::-1]:
         tree.walk(target_level=lvl,leaf_func=lambda x: vals.append(_func(x,dim)))
@@ -749,7 +753,10 @@ def integrate(tree,dim=-1):
             if n.data is None:
                 n.data = data.copy()
             else:
-                n.data = n.data + data
+                try:
+                    n.data = n.data + data
+                except:
+                    print(n.name,n.data,data)
     return newtree
     
     

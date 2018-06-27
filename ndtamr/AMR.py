@@ -74,7 +74,8 @@ def start_derefine(tree):
     total = []
     tree.walk(leaf_func = lambda x: _do_unsplit(x,total))
     return len(total)
-def refine(tree,tol=.2,eps=.01,show=False,extent=2,**kargs):
+def refine(tree,tol=.2,eps=.01,finish=True,show=False,extent=2,plot_kargs={'q':'value'},**kargs):
+
     """
     The main AMR routine which evaluates and refines 
     each node in the tree.
@@ -123,11 +124,12 @@ def refine(tree,tol=.2,eps=.01,show=False,extent=2,**kargs):
             ax.axvline(tol,c='k',ls='--')
             ax.minorticks_on()
         if tree.dim == 1:
-            line_plot(tree,q='value',rflag=True)
+            line_plot(tree,rflag=True,**plot_kargs)
         else:
-            plot(tree,q='value',grid=True,rflag=True)
-    
-    total = start_refine(tree)
+            plot(tree,grid=True,rflag=True,**plot_kargs)
+    total = 0
+    if finish:
+        total = start_refine(tree)
     return total
 
 
@@ -190,7 +192,10 @@ def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,reverse=False):
             if n.data is not None:
                 u[i] = n.data.get_refinement_data()
             else:
-                u[i] = n.restrict().get_refinement_data()
+                try:
+                    u[i] = n.restrict().get_refinement_data()
+                except AttributeError:
+                    u[i] = 0
     au = abs(u) 
     
     num = 0

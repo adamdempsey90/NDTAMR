@@ -181,7 +181,7 @@ def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
 
-def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x):
+def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=lambda x: False):
     """
     Convert the tree to a numpy array for fast (and versitile) plotting.
 
@@ -222,6 +222,7 @@ def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x):
     lmax = tree.depth()
     
     result = np.zeros((2**lmax,2**lmax))
+    mask_arr = np.zeros(result.shape).astype(bool)
     leaves = tree.list_leaves(attr='self')
     for n in leaves:
         lvl = n.global_index[0]
@@ -238,16 +239,30 @@ def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x):
                 fac = 2**(lmax-lvl)
                 result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
         else:
-            good = all([s[1] >= coords[s[0]] and s[1] < coords[s[0]]+dx[s[0]] for s in slice_])
+            good = all([min(max(xmin[s[0]],s[1]),xmax[s[0]]) >= coords[s[0]] and min(max(xmin[s[0]],s[1]),xmax[s[0]]) <= coords[s[0]]+dx[s[0]] for s in slice_])
             if good:
                 d = func(getattr(n.data,q))
                 if lvl == lmax:
                     result[i,j] = d
+                    mask_arr[i,j] = mask(n)
                 else:
                     fac = 2**(lmax-lvl)
                     result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
+                    mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] = mask(n)
+    result = np.ma.masked_array(result,mask_arr)
     return result
 
+def _test_slice(n,slice_):
+        """
+        tests if the given node satisfies the slice condition.
+        returns none if it does not.
+        """
+        lvl = n.global_index[0]
+        indices = np.array(n.global_index[1:])
+        dx = np.array(n.dx)
+        coords = np.array(n.coords)
+        
+        return all([s[1] >= coords[s[0]] and s[1] < coords[s[0]]+dx[s[0]] for s in slice_])
 def _get_slice(tree,dim,q,func,slice_):
     """
     Get the data values satisfying the slice_ condition
@@ -285,8 +300,8 @@ def _get_slice(tree,dim,q,func,slice_):
         slice_ = [(-1,0)]
     def _lfunc(n,dim,slice_,q,func):
         """
-        Tests if the given node satisfies the slice condition.
-        Returns None if it does not.
+        tests if the given node satisfies the slice condition.
+        returns none if it does not.
         """
         lvl = n.global_index[0]
         indices = np.array(n.global_index[1:])
@@ -376,7 +391,7 @@ def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q='value',func=lambd
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
 
-def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
+def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,mask=lambda x: False,alpha=None,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,labels=None,**kargs):
     """
     A 2D color plot for the tree.
 
@@ -429,6 +444,8 @@ def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=l
         The final axis object
         
     """
+    import matplotlib.colors as colors
+    import matplotlib.cm as cm
     if ax is None:
         fig,ax = subplots(figsize=figsize)
 
@@ -437,17 +454,26 @@ def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=l
     xmax = np.array(tree.xmax)
     xmin1 = xmin[dims]
     xmax1 = xmax[dims]
+
     
-    res = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func)
+    res = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func,mask=mask)
     origin = kargs.pop('origin','lower')
     interpolation = kargs.pop('interpolation','none')
     ax.imshow(res.T,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin=origin,interpolation=interpolation,cmap=cmap,**kargs)
+    vmin = kargs.pop('vmin',res.min())
+    vmax = kargs.pop('vmax',res.max())
     
-    _create_colorbar(ax,vmin=res.min(),vmax=res.max(),cmap=cmap)
+    norm = colors.Normalize(vmin=vmin,vmax=vmax)
+    c = cm.ScalarMappable(norm=norm,cmap=cmap)
+    cv = c.to_rgba(res)
+    if alpha is not None:
+	    cv[:,:,-1] = alpha 
+
+    _create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap)
 
     if rflag:
         coords = []
-        cfunc = lambda x: coords.append(x.get_coords(shift=True) if x.rflag else None)
+        cfunc = lambda x: coords.append(x.get_coords(shift=True) if x.rflag and _test_slice(x,slice_) else None)
         tree.walk(leaf_func=cfunc)
         for c in coords:
             if c is not None:
@@ -461,8 +487,13 @@ def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=l
     ax.set_ylim((xmin1[1],xmax1[1]))
 
     ax.minorticks_on()
-    ax.set_xlabel('$x_{:d}$'.format(dims[0]+1),fontsize=20)
-    ax.set_ylabel('$x_{:d}$'.format(dims[1]+1),fontsize=20)
+    if labels is None:
+    		ax.set_xlabel('$x_{:d}$'.format(dims[0]+1),fontsize=20)
+    		ax.set_ylabel('$x_{:d}$'.format(dims[1]+1),fontsize=20)
+    else:
+    		ax.set_xlabel(labels[0],fontsize=20)
+    		ax.set_ylabel(labels[1],fontsize=20)
+
     ax.tick_params(labelsize=16)
     
     if grid:
@@ -471,7 +502,7 @@ def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=l
     if savefig is not None:
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
-def contour(tree,Nconts=20,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,grid=False,colors='grey',figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
+def contour(tree,dims=[0,1],slice_=None,q='value',rflag=False,func=lambda x: x,grid=False,mask=lambda x: False,figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
     """
     Draw a contour plot for the tree.
 
@@ -534,15 +565,15 @@ def contour(tree,Nconts=20,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag
     xmin1 = xmin[dims]
     xmax1 = xmax[dims]
     
-    res = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func)
+    res = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func,mask=mask)
     
-    vmin = res.min()
-    vmax = res.max()
+    vmin = kargs.pop('vmin',res.min())
+    vmax = kargs.pop('vmax',res.max())
     
-    ax.contour(res.T,Nconts,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin='lower',
-               vmin=vmin,vmax=vmax,cmap=cmap,**kargs)
+    ax.contour(res,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin='lower',
+               **kargs)
     
-    _create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap)
+    #_create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap)
 
   
 
@@ -557,7 +588,7 @@ def contour(tree,Nconts=20,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag
     ax.tick_params(labelsize=16)
     
     if grid:
-        grid_plot(tree,dims=dims,colors=colors,slice_=slice_,fig=fig,ax=ax,**kargs)
+        grid_plot(tree,dims=dims,colors='grey',slice_=slice_,fig=fig,ax=ax,**kargs)
     fig.tight_layout()
     if savefig is not None:
         fig.savefig(savefig,bbox_inches='tight')
