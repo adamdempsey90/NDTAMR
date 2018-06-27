@@ -181,7 +181,7 @@ def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
 
-def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=lambda x: False):
+def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: 1.):
     """
     Convert the tree to a numpy array for fast (and versitile) plotting.
 
@@ -222,6 +222,7 @@ def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=
     lmax = tree.depth()
     
     result = np.zeros((2**lmax,2**lmax))
+    alpha = np.zeros((2**lmax,2**lmax)) + 1.
     mask_arr = np.zeros(result.shape).astype(bool)
     leaves = tree.list_leaves(attr='self')
     for n in leaves:
@@ -232,25 +233,37 @@ def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=
         i,j = indices[dims]
         
         if slice_ is None:
-            d = func(getattr(n.data,q))
+            if q is None:
+                d = func(n)
+            else:
+                d = func(getattr(n.data,q))
+            a = alpha_func(n)
             if lvl == lmax:
                 result[i,j] = d
+                alpha[i,j] = a
             else:
                 fac = 2**(lmax-lvl)
                 result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
+                alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] = a
         else:
             good = all([min(max(xmin[s[0]],s[1]),xmax[s[0]]) >= coords[s[0]] and min(max(xmin[s[0]],s[1]),xmax[s[0]]) <= coords[s[0]]+dx[s[0]] for s in slice_])
             if good:
-                d = func(getattr(n.data,q))
+                if q is None:
+                    d = func(n)
+                else:
+                    d = func(getattr(n.data,q))
+                a = alpha_func(n)
                 if lvl == lmax:
                     result[i,j] = d
+                    alpha[i,j] = a
                     mask_arr[i,j] = mask(n)
                 else:
                     fac = 2**(lmax-lvl)
                     result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
+                    alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] = a
                     mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] = mask(n)
     result = np.ma.masked_array(result,mask_arr)
-    return result
+    return result,alpha
 
 def _test_slice(n,slice_):
         """
@@ -391,7 +404,7 @@ def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q='value',func=lambd
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
 
-def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,mask=lambda x: False,alpha=None,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,labels=None,**kargs):
+def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: 1,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,labels=None,**kargs):
     """
     A 2D color plot for the tree.
 
@@ -456,7 +469,7 @@ def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=l
     xmax1 = xmax[dims]
 
     
-    res = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func,mask=mask)
+    res,alpha = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func,mask=mask,alpha_func=alpha_func)
     origin = kargs.pop('origin','lower')
     interpolation = kargs.pop('interpolation','none')
     ax.imshow(res.T,extent=(xmin1[0],xmax1[0],xmin1[1],xmax1[1]),origin=origin,interpolation=interpolation,cmap=cmap,**kargs)
@@ -466,10 +479,9 @@ def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=l
     norm = colors.Normalize(vmin=vmin,vmax=vmax)
     c = cm.ScalarMappable(norm=norm,cmap=cmap)
     cv = c.to_rgba(res)
-    if alpha is not None:
-	    cv[:,:,-1] = alpha 
+    cv[:,:,-1] = alpha 
 
-    _create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap)
+    cb = _create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap)
 
     if rflag:
         coords = []
@@ -501,8 +513,8 @@ def plot(tree,dims=[0,1],slice_=None,q='value',cmap='viridis',rflag=False,func=l
     fig.tight_layout()
     if savefig is not None:
         fig.savefig(savefig,bbox_inches='tight')
-    return fig,ax
-def contour(tree,dims=[0,1],slice_=None,q='value',rflag=False,func=lambda x: x,grid=False,mask=lambda x: False,figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
+    return fig,ax,cb
+def contour(tree,dims=[0,1],slice_=None,q='value',rflag=False,func=lambda x: x,grid=False,mask=lambda x: False,alpha_func=lambda x: 1.,figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
     """
     Draw a contour plot for the tree.
 
@@ -565,7 +577,7 @@ def contour(tree,dims=[0,1],slice_=None,q='value',rflag=False,func=lambda x: x,g
     xmin1 = xmin[dims]
     xmax1 = xmax[dims]
     
-    res = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func,mask=mask)
+    res,alpha = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func,mask=mask,alpha_func=alpha_func)
     
     vmin = kargs.pop('vmin',res.min())
     vmax = kargs.pop('vmax',res.max())
