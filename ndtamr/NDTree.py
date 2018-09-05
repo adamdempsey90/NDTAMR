@@ -17,8 +17,9 @@ def prolongate_injection(n):
 
 def restrict_injection(n):
     """Take the first child's data."""
-    if n.child[0].data is not None:
-        return n.child[0].data.copy()
+    if n.child[0] is not None:
+        if n.child[0].data is not None:
+            return n.child[0].data.copy()
 
 def prolongate_average(n):
     """Evenly distribute the data to the children."""
@@ -31,12 +32,13 @@ def restrict_average(n):
     """Add up the children's data."""
     total = None
     for c in n.child:
-        if c.data is not None:
-            data = c.data.copy()
-            if total is None:
-                total = data
-            else:
-                total += data
+        if c is not None:
+            if c.data is not None:
+                data = c.data.copy()
+                if total is None:
+                    total = data
+                else:
+                    total += data
     return total
 
 def prolongate_single(n):
@@ -166,7 +168,9 @@ class Node():
         ----------
         file : hdf5 group
             File to write the data to.
-
+        full_name : bool
+           Use the full name of the leaf instead
+           of the name relative to the parent.
         """
 
         if full_name:
@@ -289,8 +293,9 @@ class Node():
     def restrict(self):
         """Call the node's restrict function."""
         for c in self.child:
-            if c.data is None:
-                c.data = c.restrict()
+            if c is not None:
+                if c.data is None:
+                    c.data = c.restrict()
         return self._restrict_func(self)
     def prolongate(self):
         """Call the node's prolongate function."""
@@ -482,6 +487,12 @@ class Node():
         """
         Find the neighbors and their parents.
         Note that this only finds neighbors with levels <= our level
+
+        Parameters
+        ----------
+        extent : int
+            How many neighbors in each direction to return.
+
         """
         import itertools
         level = self.global_index[0]
@@ -588,7 +599,6 @@ class Node():
         return self.__repr__()
 
 def make_list(leaves,file=None,**kargs):
-    #dim=2,Data=None,xmin=None,xmax=None):
     """
     Helper function to construct a tree from a list of leaves.
 
@@ -596,15 +606,11 @@ def make_list(leaves,file=None,**kargs):
     ----------
     leaves : list
         A list of names of the leaves we want to add to the tree.
-
-    dim : int
-        Number of dimensions of the tree
-    Data : class
-        The data class used by the leaves.
-    xmin : tuple
-        Minimum coordinate values of the domain
-    xmax : tuple
-        Maximum coordinate values of the domain
+    file : hdf5 group
+        File that contains the data for each leaf
+    **kargs : dict
+        Keyword arguments that are passed to Node() when the
+        tree is initialized.
 
     Returns
     -------
@@ -897,5 +903,5 @@ def load_linear(file,name='0x0',prolongate_func=prolongate_datafunc,restrict_fun
     file.visit(leaves.append)
     for leaf in leaves:
         if '/' not in leaf:
-            node = t.insert(leaf,file=file[leaf]['Data'])
+            t.insert(leaf,file=file[leaf]['Data'])
     return t

@@ -58,7 +58,7 @@ def grid_lines(node,dims=[0,1],slice_=None):
 
 def generate_grid(node,dims=[0,1],slice_=None,max_level=np.infty,save=None):
     """
-    Returns a list of lines which consitute the grid.
+    Returns a list of lines which constitute the grid.
 
     Parameters
     ----------
@@ -77,13 +77,13 @@ def generate_grid(node,dims=[0,1],slice_=None,max_level=np.infty,save=None):
         The deepest level in the grid we want to display.
         This is useful for showing the progression of the refinement.
     save: str
-        If save is not None then save the gridlines to a file with
+        If save is not None then save the grid lines to a file with
         filename save
 
     Returns
     -------
     grid : list
-        Final list of gridlines
+        Final list of grid lines
 
     """
     lines = []
@@ -104,7 +104,8 @@ def generate_grid(node,dims=[0,1],slice_=None,max_level=np.infty,save=None):
     return grid
 
 def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
-             fig=None,ax=None,lw=.5,colors='grey',figsize=(6,6),save=None,savefig=None):
+             fig=None,ax=None,lw=.5,colors='grey',figsize=(6,6),
+             save=None,savefig=None):
     """
     Draws the tree's grid.
 
@@ -184,7 +185,171 @@ def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
     if savefig is not None:
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
+def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: 1,pad=None):
+    """
+    Convert the tree to a numpy array for fast (and versitile) plotting.
+
+    Parameters
+    ----------
+    tree : NDTree.Node
+        The tree we want to convert
+
+    dims : list
+        The two dimensions we will be plotting
+
+    slice_ : list of tuples
+        If the node has more than two dimensions,
+        slice_ indicates the values for the extra
+        dimensions.
+        For example, slice_=[(-1,0.2)] indicates
+        that we want the slice to go through 0.2
+        in the last dimension.
+    q : str
+        The data column to plot from each leaf's Data object
+    func : function
+        Before plotting the data we pass it through this function.
+        By default this just returns the value passed to it.
+    mask : function
+        If we want to mask any values in the final plot we can
+        set that criterion through the mask function.
+    alpha_func : function
+        If we want to change the alpha values in our final plot
+        we can set the alpha values through this function
+    pad : float
+        If not None this will pad the final 2D array with the value
+        set by pad.
+
+    Returns
+    -------
+    result : ndarray
+        The final 2D array
+    alpha : ndarray
+        The final 2D array of alpha values
+
+    """
+
+
+    if tree.dim > len(dims) and slice_ is None:
+        slice_ = [(-1,0)]
+
+
+    xmin = np.array(tree.xmin)
+    xmax = np.array(tree.xmax)
+
+    lmax = tree.depth()
+
+    result = np.zeros((2**lmax,2**lmax))
+    alpha = np.zeros((2**lmax,2**lmax)) + 1.
+    mask_arr = np.zeros(result.shape).astype(bool)
+    leaves = tree.list_leaves(attr='self')
+    for n in leaves:
+        lvl = n.global_index[0]
+        indices = np.array(n.global_index[1:])
+        dx = np.array(n.dx)
+        coords = np.array(n.coords)
+        i,j = indices[dims]
+
+        if slice_ is None:
+            if q is None:
+                d = func(n)
+            else:
+                d = func(getattr(n.data,q))
+            m = mask(n)
+            a = alpha_func(n)
+            if lvl == lmax:
+                result[i,j] = d
+                alpha[i,j] = a
+                mask_arr[i,j] = m
+            else:
+                fac = 2**(lmax-lvl)
+                result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
+                alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] = a
+                mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] = m
+        else:
+            good = all([min(max(xmin[s[0]],s[1]),xmax[s[0]]) >= coords[s[0]] and min(max(xmin[s[0]],s[1]),xmax[s[0]]) <= coords[s[0]]+dx[s[0]] for s in slice_])
+            if good:
+                if q is None:
+                    d = func(n)
+                else:
+                    d = func(getattr(n.data,q))
+                m = mask(n)
+                a = alpha_func(n)
+                if lvl == lmax:
+                    result[i,j] = d
+                    alpha[i,j] = a
+                    mask_arr[i,j] = m
+                else:
+                    fac = 2**(lmax-lvl)
+                    result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
+                    alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] = a
+                    mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] = m
+
+    if pad is not None:
+        temp = np.vstack((np.zeros((2**lmax,))+pad,result,np.zeros((2**lmax,))+pad))
+        result = np.hstack((np.zeros((2**lmax+2,1))+pad,temp,np.zeros((2**lmax+2,1))+pad))
+
+        temp = np.vstack((np.zeros((2**lmax,)),alpha,np.zeros((2**lmax,))))
+        alpha = np.hstack((np.zeros((2**lmax+2,1)),temp,np.zeros((2**lmax+2,1))))
+
+        temp = np.vstack((np.zeros((2**lmax,)),mask_arr,np.zeros((2**lmax,))))
+        mask_arr = np.hstack((np.zeros((2**lmax+2,1)),temp,np.zeros((2**lmax+2,1))))
+
+    result = np.ma.masked_array(result,mask_arr)
+    alpha = np.ma.masked_array(alpha,mask_arr)
+    return result,alpha
+
 def convert_to_uniform_integrate(tree,dims=[0,1],dim=-1,take_min=False,take_max=False,slice_=None,q=None,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: 1.,pad=None):
+    """
+    Convert the tree to a numpy array for fast (and versitile) plotting.
+    This additionally integrates the tree across the dimension given
+
+    Parameters
+    ----------
+    tree : NDTree.Node
+        The tree we want to convert
+
+    dims : list
+        The two dimensions we will be plotting
+    dim : int
+        The dimension to integrate over.
+    take_min : bool
+        If True then take the minimum value along the
+        dimension set by dim.
+    take_max : bool
+        If True then take the maximum value along the
+        dimension set by dim.
+
+
+    slice_ : list of tuples
+        If the node has more than two dimensions,
+        slice_ indicates the values for the extra
+        dimensions.
+        For example, slice_=[(-1,0.2)] indicates
+        that we want the slice to go through 0.2
+        in the last dimension.
+    q : str
+        The data column to plot from each leaf's Data object
+    func : function
+        Before plotting the data we pass it through this function.
+        By default this just returns the value passed to it.
+    mask : function
+        If we want to mask any values in the final plot we can
+        set that criterion through the mask function.
+    alpha_func : function
+        If we want to change the alpha values in our final plot
+        we can set the alpha values through this function
+    pad : float
+        If not None this will pad the final 2D array with the value
+        set by pad.
+
+    Returns
+    -------
+    result : ndarray
+        The final 2D array
+    alpha : ndarray
+        The final 2D array of alpha values
+
+    """
     xmin = [i for i in tree.xmin]
     xmax = [i for i in tree.xmax]
 
@@ -217,6 +382,7 @@ def convert_to_uniform_integrate(tree,dims=[0,1],dim=-1,take_min=False,take_max=
         else:
             d = getattr(n.data,q)
         m = mask(n)
+        a = alpha_func(n)
         if ~(np.isnan(d)|np.isinf(d)):
             try:
                 if lvl == lmax:
@@ -226,7 +392,7 @@ def convert_to_uniform_integrate(tree,dims=[0,1],dim=-1,take_min=False,take_max=
                         else:
                             result[i,j] += weight*d
                         norm[i,j] += weight
-                    alpha[i,j] += weight*(1-m)
+                    alpha[i,j] += weight*a
                     mask_arr[i,j] += weight*m
                 else:
                     fac = 2**(lmax-lvl)
@@ -240,14 +406,9 @@ def convert_to_uniform_integrate(tree,dims=[0,1],dim=-1,take_min=False,take_max=
                             result[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*d
                         norm[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight
                     mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*m
-                    alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*(1-m)
+                    alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*a
             except TypeError:
                 print(i,j,d,weight,m)
-    norm[norm==0] = 1.
-    result /= norm
-    #mask_arr /= tot
-
-    #alpha /= tot
     if q is not None:
         result = func(result)
     if pad is not None:
@@ -262,106 +423,6 @@ def convert_to_uniform_integrate(tree,dims=[0,1],dim=-1,take_min=False,take_max=
     result = np.ma.masked_array(result,mask_arr==1)
     alpha = alpha_func(alpha)
     return result,alpha
-def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: np.zeros(x.shape)+1,pad=None):
-    """
-    Convert the tree to a numpy array for fast (and versitile) plotting.
-
-    Parameters
-    ----------
-    node : NDTree.Node
-        The node of the tree we want to draw
-
-    dims : list
-        The two dimensions we will be plotting
-
-    slice_ : list of tuples
-        If the node has more than two dimensions,
-        slice_ indicates the values for the extra
-        dimensions.
-        For example, slice_=[(-1,0.2)] indicates
-        that we want the slice to go through 0.2
-        in the last dimension.
-    q : str
-        The data column to plot from each leaf's Data object
-    func : function
-        Before plotting the data we pass it through this function.
-        By default this just returns the value passed to it.
-
-    Returns
-    -------
-    result : ndarray
-        The final 2D array
-
-    """
-
-
-    if tree.dim > len(dims) and slice_ is None:
-        slice_ = [(-1,0)]
-
-
-    xmin = np.array(tree.xmin)
-    xmax = np.array(tree.xmax)
-
-    lmax = tree.depth()
-
-    result = np.zeros((2**lmax,2**lmax))
-    alpha = np.zeros((2**lmax,2**lmax)) + 1.
-    mask_arr = np.zeros(result.shape).astype(bool)
-    leaves = tree.list_leaves(attr='self')
-    for n in leaves:
-        lvl = n.global_index[0]
-        indices = np.array(n.global_index[1:])
-        dx = np.array(n.dx)
-        coords = np.array(n.coords)
-        i,j = indices[dims]
-
-        if slice_ is None:
-            if q is None:
-                d = func(n)
-            else:
-                d = func(getattr(n.data,q))
-            m = mask(n)
-            if lvl == lmax:
-                result[i,j] = d
-                alpha[i,j] = 1-m
-                mask_arr[i,j] = m
-            else:
-                fac = 2**(lmax-lvl)
-                result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
-                mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] = m
-                alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] = 1-m
-        else:
-            good = all([min(max(xmin[s[0]],s[1]),xmax[s[0]]) >= coords[s[0]] and min(max(xmin[s[0]],s[1]),xmax[s[0]]) <= coords[s[0]]+dx[s[0]] for s in slice_])
-            if good:
-                if q is None:
-                    d = func(n)
-                else:
-                    d = func(getattr(n.data,q))
-                m = mask(n)
-                if lvl == lmax:
-                    result[i,j] = d
-                    alpha[i,j] = 1-m
-                    mask_arr[i,j] = m
-                else:
-                    fac = 2**(lmax-lvl)
-                    result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
-                    alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] = 1-m
-                    mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] = m
-
-    if pad is not None:
-        temp = np.vstack((np.zeros((2**lmax,))+pad,result,np.zeros((2**lmax,))+pad))
-        result = np.hstack((np.zeros((2**lmax+2,1))+pad,temp,np.zeros((2**lmax+2,1))+pad))
-
-        temp = np.vstack((np.zeros((2**lmax,)),alpha,np.zeros((2**lmax,))))
-        alpha = np.hstack((np.zeros((2**lmax+2,1)),temp,np.zeros((2**lmax+2,1))))
-
-        temp = np.vstack((np.zeros((2**lmax,)),mask_arr,np.zeros((2**lmax,))))
-        mask_arr = np.hstack((np.zeros((2**lmax+2,1)),temp,np.zeros((2**lmax+2,1))))
-
-    result = np.ma.masked_array(result,mask_arr)
-    alpha = alpha_func(alpha)
-    return result,alpha
-
 def _test_slice(n,slice_):
         """
         tests if the given node satisfies the slice condition.
@@ -501,9 +562,10 @@ def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q='value',func=lambd
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
 
-def plot(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,mask=lambda x: False,
-         alpha_func=lambda x: np.zeros(x.shape)+1,pad=None,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,
-         labels={},lognorm=False,colorbar=True,cb_kargs={},**kargs):
+def plot(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=None,
+        q='value',cmap='viridis',rflag=False,func=lambda x: x,mask=lambda x: False,
+         alpha_func=lambda x: 1,pad=None,grid=False,figsize=(6,6),fig=None,ax=None,
+         labels={},lognorm=False,colorbar=True,cb_kargs={},savefig=None,**kargs):
     """
     A 2D color plot for the tree.
 
@@ -514,7 +576,15 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=Non
 
     dims : list
         The two dimensions we will be plotting
-
+    integrate : int
+        If not None, then integrate the tree along the
+        dimension given by integrate.
+    take_min : bool
+        If True then take the minimum value along the
+        dimension set by integrate.
+    take_max : bool
+        If True then take the maximum value along the
+        dimension set by integrate.
     slice_ : list of tuples
         If the node has more than two dimensions,
         slice_ indicates the values for the extra
@@ -531,6 +601,12 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=Non
     func : function
         Before plotting the data we pass it through this function.
         By default this just returns the value passed to it.
+    mask : function
+        If we want to mask any values in the final plot we can
+        set that criterion through the mask function.
+    alpha_func : function
+        If we want to change the alpha values in our final plot
+        we can set the alpha values through this function
     grid : bool
         If True then we additionally plot the grid lines.
     colors : str
@@ -541,6 +617,14 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=Non
         The figure object to plot on
     ax : matplotlib.axis.Axis
         The axis object to plot on
+    labels : dict
+        The axis labels. For example, {'x':'x', 'y':'y'}
+    lognorm : bool
+        If True the colorbar will be log scale.
+    colorbar : bool
+        If False then do not show the colorbar.
+    cb_kargs = dict
+        Keyword arguments passed to the _create_colorbar() function.
     **kargs :
         Keyword arguments passed to plt.imshow
     savefig : str
@@ -632,9 +716,9 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=Non
     if savefig is not None:
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax,cb,res.T,alpha.T
-def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=None,q='value',labels=None,rflag=False,func=lambda x: x,pad=None,
-            grid=False,mask=lambda x: False,alpha_func=lambda x: 1.,figsize=(6,6),
-            fig=None,ax=None,savefig=None,**kargs):
+def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=None,q='value',
+        labels={},rflag=False,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: 1.,
+        pad=None,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
     """
     Draw a contour plot for the tree.
 
@@ -646,7 +730,15 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=
         The number of contours to draw
     dims : list
         The two dimensions we will be plotting
-
+    integrate : int
+        If not None, then integrate the tree along the
+        dimension given by integrate.
+    take_min : bool
+        If True then take the minimum value along the
+        dimension set by integrate.
+    take_max : bool
+        If True then take the maximum value along the
+        dimension set by integrate.
     slice_ : list of tuples
         If the node has more than two dimensions,
         slice_ indicates the values for the extra
@@ -663,6 +755,15 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=
     func : function
         Before plotting the data we pass it through this function.
         By default this just returns the value passed to it.
+    mask : function
+        If we want to mask any values in the final plot we can
+        set that criterion through the mask function.
+    alpha_func : function
+        If we want to change the alpha values in our final plot
+        we can set the alpha values through this function
+    pad : float
+        If not None this will pad the final 2D array with the value
+        set by pad.
     grid : bool
         If True then we additionally plot the grid lines.
     colors : str
@@ -721,7 +822,6 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=
 
 
 
-    #_create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap)
 
 
 
@@ -731,12 +831,11 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=
     ax.set_ylim((xmin1[1],xmax1[1]))
 
     ax.minorticks_on()
-    if labels is None:
-    		ax.set_xlabel('$x_{:d}$'.format(dims[0]+1),fontsize=20)
-    		ax.set_ylabel('$x_{:d}$'.format(dims[1]+1),fontsize=20)
-    else:
-    		ax.set_xlabel(labels[0],fontsize=20)
-    		ax.set_ylabel(labels[1],fontsize=20)
+    fontsize = labels.pop('fontsize',20)
+    xlbl = labels.pop('x','$x_{:d}$'.format(dims[0]+1))
+    ylbl = labels.pop('y','$y_{:d}$'.format(dims[1]+1))
+    ax.set_xlabel(xlbl,fontsize=fontsize)
+    ax.set_ylabel(ylbl,fontsize=fontsize)
 
     ax.tick_params(labelsize=16)
 
@@ -762,7 +861,7 @@ def _create_colorbar(ax,vmin,vmax,cax=None,log=False,cmap='viridis',**kargs):
         The maximum value for the colorbar
 
     log : bool
-        If log==True then the colorscale is logscale
+        If log==True then the colorscale is log scale
     cmap : str
         The colormap to use for the colorbar
     **kargs :
