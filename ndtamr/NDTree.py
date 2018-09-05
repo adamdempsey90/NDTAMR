@@ -1,6 +1,6 @@
 """
     The NDTree module contains the n-dimensional tree structure
-    and routines for creating trees and integrating trees. 
+    and routines for creating trees and integrating trees.
 """
 from __future__ import print_function, division
 import numpy as np
@@ -17,9 +17,10 @@ def prolongate_injection(n):
 
 def restrict_injection(n):
     """Take the first child's data."""
-    if n.child[0].data is not None:
-        return n.child[0].data.copy()
-    
+    if n.child[0] is not None:
+        if n.child[0].data is not None:
+            return n.child[0].data.copy()
+
 def prolongate_average(n):
     """Evenly distribute the data to the children."""
     data =[None]*n.nchildren
@@ -31,14 +32,15 @@ def restrict_average(n):
     """Add up the children's data."""
     total = None
     for c in n.child:
-        if c.data is not None:
-            data = c.data.copy()
-            if total is None:
-                total = data
-            else:
-                total += data
+        if c is not None:
+            if c.data is not None:
+                data = c.data.copy()
+                if total is None:
+                    total = data
+                else:
+                    total += data
     return total
-    
+
 def prolongate_single(n):
     """Copy data to just the first child."""
     data =[None]*n.nchildren
@@ -65,12 +67,12 @@ def restrict_datafunc(n):
 class Node():
     """
     The main Tree class.
-    
+
 
     Parameters
     ----------
     name: str
-        The name of the node. The name is a string of hexidecimals 
+        The name of the node. The name is a string of hexidecimals
         which trace the node back to the root node of the tree.
         For example, in 3D the 5th child of the root would be called
         0x00x5, and the 7th child of the 3rd child of the root
@@ -81,10 +83,10 @@ class Node():
         This node's parent node.
         If None this node is the root of the tree.
     prolongate_func: function
-        Function which transfers data to the children of this node when 
+        Function which transfers data to the children of this node when
         it is split
     restrict_func: function
-        Function which transfers from the children of this node when 
+        Function which transfers from the children of this node when
         it is unsplit
     xmin: tuple
         The minimum coordinate values for the entire domain
@@ -99,7 +101,7 @@ class Node():
     def __init__(self,name='0x0',dim=2,parent=None,
                 prolongate_func=prolongate_datafunc,restrict_func=restrict_datafunc,
                  xmin=None,xmax=None, data_class=Empty,file=None):
-        
+
         # Store some arguments to pass easily to the children
         self.args = {'dim':dim,'xmin':xmin,'xmax':xmax,'prolongate_func':prolongate_func,
                     'restrict_func':restrict_func,'data_class':data_class}
@@ -118,10 +120,10 @@ class Node():
 
         self._prolongate_func = prolongate_func
         self._restrict_func = restrict_func
-        
+
         self.xmin = xmin
         self.xmax = xmax
-        
+
         if self.xmin is None:
             self.xmin = [0]*self.dim
         if self.xmax is None:
@@ -134,8 +136,8 @@ class Node():
         self.dx = [(xo-xi)*2.**(-self.global_index[0]) for xi,xo in zip(self.xmin,self.xmax)]
         self.coords = self.get_coords()
         self.data = self._data_class(file=file)
- 
-        
+
+
     def index_from_bin(self,bin_):
         """
         Take binary number and return the index relative to parent.
@@ -166,15 +168,17 @@ class Node():
         ----------
         file : hdf5 group
             File to write the data to.
+        full_name : bool
+           Use the full name of the leaf instead
+           of the name relative to the parent.
+        """
 
-        """ 
-        
         if full_name:
             gname = self.name
         else:
             gname = '0x' + self.name.split('0x')[-1]
         grp = file.create_group(gname)
-        
+
         if self.parent is None:
             from json import dumps
             serial = {}
@@ -183,9 +187,9 @@ class Node():
                     serial[key] = val.__name__
                 except AttributeError:
                     serial[key] = val
-                
+
             file.attrs['Pars'] = dumps(serial)
-            
+
         if self.leaf:
             # We are a leaf, so we should dump our data
             dset = grp.create_group('Data')
@@ -204,7 +208,7 @@ class Node():
         file : hdf5 file
             The file we are reading.
         """
-        
+
         try:
             cgrps = [file[hex(i)] for i in range(self.nchildren)]
             self.split()
@@ -213,7 +217,7 @@ class Node():
         except KeyError:
             self.leaf = True
             self.data = self._data_class(coords=self.coords,file=file['Data'])
-            
+
         return
     def get_local_index(self,name):
         """Get the local index relative to the parent from the name."""
@@ -249,7 +253,7 @@ class Node():
         pindx : tuple
             The parent index
         name : str
-            The name of the child 
+            The name of the child
 
         """
         pindx = [i//2 for i in indx]
@@ -288,13 +292,17 @@ class Node():
         return copy.deepcopy(self)
     def restrict(self):
         """Call the node's restrict function."""
+        for c in self.child:
+            if c is not None:
+                if c.data is None:
+                    c.data = c.restrict()
         return self._restrict_func(self)
     def prolongate(self):
         """Call the node's prolongate function."""
         return self._prolongate_func(self)
     def split(self):
         """
-        Split the node into 2^dim children, and pass the data to the 
+        Split the node into 2^dim children, and pass the data to the
         first born.
         Data transfer is handled via the prolongate function.
         """
@@ -304,8 +312,8 @@ class Node():
         data = self.prolongate()
         self.data = None
         for i in range(self.nchildren):
-            self.child[i].data = data[i] 
-    
+            self.child[i].data = data[i]
+
     def unsplit(self):
         """
         Remove the tree below this node
@@ -319,7 +327,7 @@ class Node():
         new_tree =  self.deepcopy()
         self.unsplit()
         return new_tree
-    def insert(self,name,data=None,file=None): 
+    def insert(self,name,data=None,file=None):
         """
         Insert a new point in the tree.
         This is the same as find, but will
@@ -334,7 +342,7 @@ class Node():
         node : Node
             The node of the new point in the tree.
         """
-        
+
         node = self.find(name,insert=True)
         if data is not None:
             node.data = node._data_class(coords=node.coords,data=data)
@@ -343,9 +351,9 @@ class Node():
         return node
 
 
-    
 
-        
+
+
     def up(self):
         """Move up the tree"""
         return self.parent
@@ -356,19 +364,19 @@ class Node():
              maxlevel=np.infty):
         """
         Recursively walk the tree.
-        Before calling the _walk function we check that we're starting 
+        Before calling the _walk function we check that we're starting
         at the root node.
 
         Parameters
         ----------
         leaf_func : function
-            If not None then call this function if the node 
+            If not None then call this function if the node
             is a leaf node.
         node_func :
-            If not None then call this function if the node 
+            If not None then call this function if the node
             is not a leaf node.
         target_level : int
-            Only apply leaf function if this node's leavel is 
+            Only apply leaf function if this node's leavel is
             target level.
         maxlevel : int
             Don't go further down in the tree than maxlevel
@@ -378,15 +386,12 @@ class Node():
             root = self.find('0x0')
             root._walk(leaf_func=leaf_func,node_func=node_func,
                    target_level=target_level,maxlevel=maxlevel)
-        else: 
+        else:
             self._walk(leaf_func=leaf_func,node_func=node_func,
                    target_level=target_level,maxlevel=maxlevel)
-        
+
     def _walk(self,leaf_func=None,node_func=None, target_level=None,
              maxlevel=np.infty):
-        if maxlevel is not None:
-            if self.global_index[0] > maxlevel:
-                return
         if target_level is not None:
             if self.global_index[0] > target_level:
                 return
@@ -398,13 +403,18 @@ class Node():
                 if self.global_index[0] == target_level:
                     if leaf_func is not None:
                         leaf_func(self)
-            return 
+            return
         if node_func is not None:
             node_func(self)
+
+        if maxlevel is not None:
+            if self.global_index[0] >= maxlevel:
+                return
         for c in self.child:
-            c._walk(leaf_func=leaf_func,node_func=node_func,
+            if c is not None:
+                c._walk(leaf_func=leaf_func,node_func=node_func,
                    target_level=target_level,maxlevel=maxlevel)
-            
+
     def depth(self):
         """Find the depth of the tree."""
         res = [self.global_index[0]]
@@ -419,7 +429,7 @@ class Node():
         ----------
         point : tuple
             The coordinates of the point we want to find.
-            
+
 
         Returns
         -------
@@ -427,13 +437,13 @@ class Node():
             The leaf node which contains the point.
 
         """
-        
+
         lvl = self.depth() + 1
         indx = [lvl] +  [int((p-xi)/( (xo-xi)*2.**(-lvl))) for p,xi,xo in zip(point,self.xmin,self.xmax)]
         name = self.get_name(indx)
         leaf = self.find(name)
         return leaf
-        
+
     def find(self,name,insert=False):
         """
         Find the next step towards the node given by name.
@@ -444,7 +454,7 @@ class Node():
             Name of the node we want to find.
         insert :
            If True then the tree will grow to accomidate the new point
-    
+
         """
         my_level = self.global_index[0]
 
@@ -462,7 +472,7 @@ class Node():
                 # It's one of our descendents
                 child = names[my_level+1:][0]
                 if self.leaf:
-                    # Point doesn't exist currently  
+                    # Point doesn't exist currently
                     if insert:
                         self.split()
                     else:
@@ -477,16 +487,22 @@ class Node():
         """
         Find the neighbors and their parents.
         Note that this only finds neighbors with levels <= our level
+
+        Parameters
+        ----------
+        extent : int
+            How many neighbors in each direction to return.
+
         """
         import itertools
         level = self.global_index[0]
         indx = self.global_index[1:]
 
-        
+
         stencil = list(range(-extent,extent+1))
         total_neighbors = len(stencil)**self.dim
         offsets = list(itertools.product(stencil,repeat=self.dim))
-        
+
 
         neighbor_indices = [(level,)+tuple([x+j for j,x in zip(i,indx)]) for i in offsets]
 
@@ -495,21 +511,21 @@ class Node():
         upper_neighbors = [None]*total_neighbors
         for i,ind in enumerate(neighbor_indices):
             # Check that the point is inside the domain
-            if all(j>=0 for j in ind) and all(j<2**ind[0] for j in ind[1:]): 
+            if all(j>=0 for j in ind) and all(j<2**ind[0] for j in ind[1:]):
                 n = self.get_name(ind)
                 node = self.find(n)
-                if node.name == n: 
+                if node.name == n:
                     # Node exists at this level
                     neighbors[i] = node
                     upper_neighbors[i] = node.parent
-                else: 
+                else:
                     # Node doesn't exist at this level, we have its parent
                     upper_neighbors[i] = node
 
 
         return offsets, neighbor_indices,neighbors, upper_neighbors
 
-        
+
     def get_coords(self,shift=False):
         """
         Get the data coordinates for this node given xmin and xmax
@@ -536,10 +552,10 @@ class Node():
         func : function
             A function that we apply to the node before
             adding it to the list.
-        
+
         criteria : function
             A filter applied to the final list of leaves.
-            Useful for removing None from the list, e.g. 
+            Useful for removing None from the list, e.g.
             criteria = lambda x: x is not None
         Returns
         -------
@@ -553,28 +569,28 @@ class Node():
                 func = lambda i: i
             else:
                 func = lambda i: getattr(i,attr)
-        
+
         self.walk(leaf_func=lambda i: leaves.append(func(i)))
         if criteria is not None:
             leaves = list(filter(criteria,leaves))
-        return leaves    
-    
+        return leaves
+
     def __eq__(self,n2):
         """Comparison with another node"""
-        
-            
+
+
         v1 = vars(self).copy()
         v2 = vars(n2).copy()
         p1 = v1.pop('parent')
         p2 = v2.pop('parent')
-        
+
         try:
             res = p1.name == p2.name
         except AttributeError:
             res = p1 is None and p2 is None
             if not res:
                 return False
-        return v1 == v2 and res 
+        return v1 == v2 and res
     def __repr__(self):
         """Show the name of the node when printed to screen"""
         return self.name
@@ -583,7 +599,6 @@ class Node():
         return self.__repr__()
 
 def make_list(leaves,file=None,**kargs):
-    #dim=2,Data=None,xmin=None,xmax=None):
     """
     Helper function to construct a tree from a list of leaves.
 
@@ -591,15 +606,11 @@ def make_list(leaves,file=None,**kargs):
     ----------
     leaves : list
         A list of names of the leaves we want to add to the tree.
-        
-    dim : int
-        Number of dimensions of the tree
-    Data : class
-        The data class used by the leaves.
-    xmin : tuple
-        Minimum coordinate values of the domain
-    xmax : tuple
-        Maximum coordinate values of the domain
+    file : hdf5 group
+        File that contains the data for each leaf
+    **kargs : dict
+        Keyword arguments that are passed to Node() when the
+        tree is initialized.
 
     Returns
     -------
@@ -607,7 +618,7 @@ def make_list(leaves,file=None,**kargs):
         The final tree
 
     """
-    
+
     t = Node('0x0',**kargs)
     for name in leaves:
         leaf = t.insert(name)
@@ -615,14 +626,14 @@ def make_list(leaves,file=None,**kargs):
             leaf.load(file[name])
 
     return t
-    
+
 def make_random(nleaves,dim=2,depth=6,Data=None,xmin=None,xmax=None):
     """
     Helper function to construct a tree of random leaves.
 
     Parameters
     ----------
-    nleaves : int    
+    nleaves : int
         Number of leaves to add to the tree
     dim : int
         Number of dimensions of the tree
@@ -642,7 +653,7 @@ def make_random(nleaves,dim=2,depth=6,Data=None,xmin=None,xmax=None):
 
     """
     t = Node(dim=dim,xmin=xmin,xmax=xmax)
-    
+
     curr_list = []
     num = 0
     while num < nleaves:
@@ -661,7 +672,7 @@ def make_uniform(dim=2,depth=6,Data=None,xmin=None,xmax=None,**kargs):
 
     Parameters
     ----------
-    nleaves : int    
+    nleaves : int
         Number of leaves to add to the tree
     dim : int
         Number of dimensions of the tree
@@ -673,7 +684,7 @@ def make_uniform(dim=2,depth=6,Data=None,xmin=None,xmax=None,**kargs):
         Minimum coordinate values of the domain
     xmax : tuple
         Maximum coordinate values of the domain
-    **kargs : 
+    **kargs :
         Additional keyword arguments passed to the tree
 
     Returns
@@ -699,7 +710,7 @@ def integrate(tree,dim=-1):
         The input tree we which to integrate
     dim : int
         The dimension to integrate over
- 
+
     Returns
     -------
     newtree: Node
@@ -724,22 +735,26 @@ def integrate(tree,dim=-1):
             data = None
         newindx = [lvl] + indx
         return newindx,weight,z,data
-        
+
     maxlevel = tree.depth()
     xmin = [x for x in tree.xmin]
     xi = xmin.pop(dim)
     xmax = [x for x in tree.xmax]
     xo = xmax.pop(dim)
-    
+
     lz = xo-xi
-    
-                     
-    
-    newtree = Node(dim=tree.dim-1,xmin=xmin,xmax=xmax)
+
+    args = {}
+    for key,val in tree.args.items():
+        if key not in ['dim','xmax','xmin']:
+	        args[key] = val
+
+
+    newtree = Node(dim=tree.dim-1,xmin=xmin,xmax=xmax,**args)
     vals = []
     for lvl in range(maxlevel+1)[::-1]:
         tree.walk(target_level=lvl,leaf_func=lambda x: vals.append(_func(x,dim)))
-    
+
     for indx,weight,z,data in vals:
         name = newtree.get_name(indx)
         n = newtree.insert(name)
@@ -749,15 +764,18 @@ def integrate(tree,dim=-1):
             if n.data is None:
                 n.data = data.copy()
             else:
-                n.data = n.data + data
+                try:
+                    n.data = n.data + data
+                except:
+                    print(n.name,n.data,data)
     return newtree
-    
-    
+
+
 def build_from_file(file,name='0x0',prolongate_func=prolongate_datafunc,restrict_func=restrict_datafunc,data_class=Empty,**kargs):
     """
-    Build a tree from an hdf5 file. This is the reverse of the 
+    Build a tree from an hdf5 file. This is the reverse of the
     tree.save() function.
-    
+
     Parameters
     ----------
     file: hdf5 group
@@ -767,29 +785,29 @@ def build_from_file(file,name='0x0',prolongate_func=prolongate_datafunc,restrict
     prolongate_func : function
         The prolongate function to use.
     restrict_func : function
-        The restrict function to use.    
+        The restrict function to use.
     data_class : function
-        The data class to use.    
+        The data class to use.
     **kargs : dict
         Extra keyword arguments to pass to Node() when the tree
         is constructed.
-    
+
     Returns
     -------
     t : ndtamr.Node
         The final tree.
-        
-    """ 
+
+    """
     from json import loads
     args = loads(file.attrs['Pars'])
-    
+
     _data_class = args.pop('data_class')
     new_data = _data_class != data_class.__name__
     _prolongate_func = args.pop('prolongate_func')
     new_prolongate = _prolongate_func != prolongate_func.__name__
     _restrict_func = args.pop('restrict_func')
     new_restrict = _restrict_func != restrict_func.__name__
-    
+
     if new_prolongate or new_restrict or new_data:
         print('Tree was originally built with,')
         if new_data:
@@ -798,28 +816,28 @@ def build_from_file(file,name='0x0',prolongate_func=prolongate_datafunc,restrict
             print(_prolongate_func)
         if new_restrict:
             print(_restrict_func)
-        
+
     t = Node(name,data_class=data_class,prolongate_func=prolongate_func,
              restrict_func=restrict_func,**args)
-    
+
     t.build(file['0x0'])
-    
-    
+
+
     return t
-    
-def save_linear(file,tree):   
+
+def save_linear(file,tree):
     """
     Save tree leaves to an hdf5 file. Rather than nested directories
     following the tree layout, the tree is flattened to a linear
     array of leaves.
-    
+
     Parameters
     ----------
     file: hdf5 group
         The hdf5 group to save the tree to.
     tree: ndtamr.Node
         The root of the tree to save
-        
+
     """
     from json import dumps
 
@@ -832,14 +850,13 @@ def save_linear(file,tree):
 
     file.attrs['Pars'] = dumps(serial)
     for leaf in tree.list_leaves(attr='self'):
-        print(leaf)
         leaf.save(file,full_name=True)
     return
 def load_linear(file,name='0x0',prolongate_func=prolongate_datafunc,restrict_func=restrict_datafunc,data_class=Empty,**kargs):
     """
-    Load tree leaves from an hdf5 file. 
+    Load tree leaves from an hdf5 file.
     This is the reverse of the save_linear() function.
-    
+
     Parameters
     ----------
     file: hdf5 group
@@ -849,19 +866,19 @@ def load_linear(file,name='0x0',prolongate_func=prolongate_datafunc,restrict_fun
     prolongate_func : function
         The prolongate function to use.
     restrict_func : function
-        The restrict function to use.    
+        The restrict function to use.
     data_class : function
-        The data class to use.    
+        The data class to use.
     **kargs : dict
         Extra keyword arguments to pass to Node() when the tree
         is constructed.
-    
+
     Returns
     -------
     t : ndtamr.Node
         The final tree.
-        
-    """    
+
+    """
     from json import loads
     args = loads(file.attrs['Pars'])
     _data_class = args.pop('data_class')
@@ -870,7 +887,7 @@ def load_linear(file,name='0x0',prolongate_func=prolongate_datafunc,restrict_fun
     new_prolongate = _prolongate_func != prolongate_func.__name__
     _restrict_func = args.pop('restrict_func')
     new_restrict = _restrict_func != restrict_func.__name__
-    
+
     if new_prolongate or new_restrict or new_data:
         print('Tree was originally built with,')
         if new_data:
@@ -881,10 +898,10 @@ def load_linear(file,name='0x0',prolongate_func=prolongate_datafunc,restrict_fun
             print(_restrict_func)
     t = Node(name,data_class=data_class,prolongate_func=prolongate_func,
              restrict_func=restrict_func,**args)
-    
+
     leaves = []
     file.visit(leaves.append)
     for leaf in leaves:
         if '/' not in leaf:
-            node = t.insert(leaf,file=file[leaf]['Data'])
+            t.insert(leaf,file=file[leaf]['Data'])
     return t

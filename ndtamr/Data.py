@@ -16,7 +16,10 @@ class GenericData():
     def __init__(self,coords=(0,0),file=None,data=None):
         self.coords = [c for c in coords]
         self.load(file=file,data=data)
+        self.user_init(coords=coords,file=file,data=data)
     
+    def user_init(self,coords=(0,0),file=None,data=None):
+        return
     def load(self,file=None,data=None):
         """
         Load any data or set it from the class function
@@ -39,6 +42,9 @@ class GenericData():
         else:
             for c in self.data_cols:
                 setattr(self,c,file[c][...])
+        self.user_load(file=file,data=data)
+    def user_load(self,file=None,data=None):
+        return
     def func(self):
         """Function which sets the data value"""
         self.value = 0
@@ -58,7 +64,9 @@ class GenericData():
         #grp = file.create_group('Data')
         for c in self.data_cols:
             file.create_dataset(c,data=getattr(self,c))
-
+        self.user_save(file)
+    def user_save(self,file):
+        return
     def get_refinement_data(self):
         """Returns the data column which we want to refine on."""
         return self.value
