@@ -13,39 +13,39 @@ def grid_lines(node,dims=[0,1],slice_=None):
 
     Parameters
     ----------
-    node : NDTree.Node 
+    node : NDTree.Node
         The node of the tree we want to draw
-        
+
     dims : list
         The two dimensions we will be plotting
-        
+
     slice_ : list of tuples
         If the node has more than two dimensions,
         slice_ indicates the values for the extra
-        dimensions. 
+        dimensions.
         For example, slice_=[(-1,0.2)] indicates
-        that we want the slice_ going through 0.2 
+        that we want the slice_ going through 0.2
         in the last dimension.
 
     Returns
     -------
     final_lines : list
         The two lines which split the cell
-        
+
     """
     if node.leaf:
         return None
 
     dx = 2.**(-node.global_index[0]-1)
     indx = np.array(node.global_index[1:])
-    
+
     coords = np.array(node.coords)
     ndx = np.array(node.dx)
     if slice_ is not None:
         for s in slice_:
             if not (s[1] >= coords[s[0]] and s[1] < coords[s[0]]+ndx[s[0]]):
                 return [None,None]
-            
+
     i,j = indx[dims]
     idx,jdx = np.array(node.dx)[dims] / 2
     istart,jstart = np.array(node.xmin)[dims]
@@ -62,22 +62,22 @@ def generate_grid(node,dims=[0,1],slice_=None,max_level=np.infty,save=None):
 
     Parameters
     ----------
-    node : NDTree.Node 
+    node : NDTree.Node
         The node of the tree we want to draw
     dims : list
         The two dimensions we will be plotting
     slice_ : list of tuples
         If the node has more than two dimensions,
         slice_ indicates the values for the extra
-        dimensions. 
+        dimensions.
         For example, slice_=[(-1,0.2)] indicates
-        that we want the slice to go through 0.2 
+        that we want the slice to go through 0.2
         in the last dimension.
     max_level : int
         The deepest level in the grid we want to display.
         This is useful for showing the progression of the refinement.
     save: str
-        If save is not None then save the gridlines to a file with 
+        If save is not None then save the gridlines to a file with
         filename save
 
     Returns
@@ -88,7 +88,7 @@ def generate_grid(node,dims=[0,1],slice_=None,max_level=np.infty,save=None):
     """
     lines = []
     node.walk(node_func=lambda x: lines.extend(grid_lines(x,dims=dims,slice_=slice_) if x.global_index[0]<max_level else [None,None]))
-    
+
     grid = []
     for line in lines:
         if line is not None:
@@ -110,18 +110,18 @@ def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
 
     Parameters
     ----------
-    node : NDTree.Node 
+    node : NDTree.Node
         The node of the tree we want to draw
-        
+
     dims : list
         The two dimensions we will be plotting
-        
+
     slice_ : list of tuples
         If the node has more than two dimensions,
         slice_ indicates the values for the extra
-        dimensions. 
+        dimensions.
         For example, slice_=[(-1,0.2)] indicates
-        that we want the slice to go through 0.2 
+        that we want the slice to go through 0.2
         in the last dimension.
     max_level : int
         The deepest level in the grid we want to display.
@@ -135,12 +135,12 @@ def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
     colors : str
         The color of the gridlines
     figsize : tuple
-        The figure size 
+        The figure size
     save: str
-        If save is not None then save the gridlines to a file with 
+        If save is not None then save the gridlines to a file with
         filename save
     savefig : str
-        If save is not None then save the figure to a file with 
+        If save is not None then save the figure to a file with
         filename savefig
 
     Returns
@@ -149,11 +149,11 @@ def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
         The final figure object
     ax : matplotlib.axis.Axis
         The final axis object
-        
+
 
     """
     import matplotlib.collections as mc
-    
+
     first_plot = ax is None
     if first_plot:
         fig,ax = subplots(figsize=figsize)
@@ -168,8 +168,8 @@ def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
     ax.add_collection(lc)
 
 
-    
-    
+
+
     if first_plot:
         xmin = xmin[dims]
         xmax = xmax[dims]
@@ -184,22 +184,27 @@ def grid_plot(node,dims=[0,1],slice_=None,max_level=np.infty,
     if savefig is not None:
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
-def convert_to_uniform_integrate(tree,dims=[0,1],dim=-1,take_min=False,slice_=None,q=None,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: 1.,pad=None):
+def convert_to_uniform_integrate(tree,dims=[0,1],dim=-1,take_min=False,take_max=False,slice_=None,q=None,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: 1.,pad=None):
     xmin = [i for i in tree.xmin]
     xmax = [i for i in tree.xmax]
 
     xi = xmin.pop(dim)
     xo = xmax.pop(dim)
-    
+
     lmax = tree.depth()
-    
+
+    tot = 2**(-lmax)
+
     result = np.zeros((2**lmax,2**lmax))
+    norm = np.zeros((2**lmax,2**lmax))
     if take_min:
         result += 1e99
-    alpha = np.zeros((2**lmax,2**lmax)) 
+    elif take_max:
+        result -= 1e99
+    alpha = np.zeros((2**lmax,2**lmax))
     mask_arr = np.zeros(result.shape)
     leaves = tree.list_leaves(attr='self')
-    
+
     for n in leaves:
         lvl = n.global_index[0]
         indices = np.array(n.global_index[1:])
@@ -212,57 +217,69 @@ def convert_to_uniform_integrate(tree,dims=[0,1],dim=-1,take_min=False,slice_=No
         else:
             d = getattr(n.data,q)
         m = mask(n)
-        try:
-            if lvl == lmax:
-                if take_min:
-                    result[i,j] = min(d,result[i,j])
+        if ~(np.isnan(d)|np.isinf(d)):
+            try:
+                if lvl == lmax:
+                    if m < 1:
+                        if take_min:
+                            result[i,j] = min(d,result[i,j])
+                        else:
+                            result[i,j] += weight*d
+                        norm[i,j] += weight
+                    alpha[i,j] += weight*(1-m)
+                    mask_arr[i,j] += weight*m
                 else:
-                    result[i,j] += weight*d
-                alpha[i,j] += weight*(1-m)
-                mask_arr[i,j] += weight*m
-            else:
-                fac = 2**(lmax-lvl)
-                
-                if take_min:
-                    result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = np.minimum(result[fac*i:fac*(i+1),fac*j:fac*(j+1)],d)
-                else:
-                    result[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*d
-                mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*m
-                alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*(1-m)
-        except TypeError:
-            print(i,j,d,weight,m)
+                    fac = 2**(lmax-lvl)
+
+                    if m < 1:
+                        if take_min:
+                            result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = np.minimum(result[fac*i:fac*(i+1),fac*j:fac*(j+1)],d)
+                        elif take_max:
+                            result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = np.maximum(result[fac*i:fac*(i+1),fac*j:fac*(j+1)],d)
+                        else:
+                            result[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*d
+                        norm[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight
+                    mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*m
+                    alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] += weight*(1-m)
+            except TypeError:
+                print(i,j,d,weight,m)
+    norm[norm==0] = 1.
+    result /= norm
+    #mask_arr /= tot
+
+    #alpha /= tot
     if q is not None:
         result = func(result)
     if pad is not None:
         temp = np.vstack((np.zeros((2**lmax,))+pad,result,np.zeros((2**lmax,))+pad))
         result = np.hstack((np.zeros((2**lmax+2,1))+pad,temp,np.zeros((2**lmax+2,1))+pad))
-        
+
         temp = np.vstack((np.zeros((2**lmax,)),alpha,np.zeros((2**lmax,))))
         alpha = np.hstack((np.zeros((2**lmax+2,1)),temp,np.zeros((2**lmax+2,1))))
-        
+
         temp = np.vstack((np.zeros((2**lmax,)),mask_arr,np.zeros((2**lmax,))))
         mask_arr = np.hstack((np.zeros((2**lmax+2,1)),temp,np.zeros((2**lmax+2,1))))
     result = np.ma.masked_array(result,mask_arr==1)
     alpha = alpha_func(alpha)
-    return result,alpha 
+    return result,alpha
 def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: np.zeros(x.shape)+1,pad=None):
     """
     Convert the tree to a numpy array for fast (and versitile) plotting.
 
     Parameters
     ----------
-    node : NDTree.Node 
+    node : NDTree.Node
         The node of the tree we want to draw
-        
+
     dims : list
         The two dimensions we will be plotting
-        
+
     slice_ : list of tuples
         If the node has more than two dimensions,
         slice_ indicates the values for the extra
-        dimensions. 
+        dimensions.
         For example, slice_=[(-1,0.2)] indicates
-        that we want the slice to go through 0.2 
+        that we want the slice to go through 0.2
         in the last dimension.
     q : str
         The data column to plot from each leaf's Data object
@@ -276,17 +293,17 @@ def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=
         The final 2D array
 
     """
-    
-   
+
+
     if tree.dim > len(dims) and slice_ is None:
         slice_ = [(-1,0)]
-        
-        
+
+
     xmin = np.array(tree.xmin)
     xmax = np.array(tree.xmax)
-    
+
     lmax = tree.depth()
-    
+
     result = np.zeros((2**lmax,2**lmax))
     alpha = np.zeros((2**lmax,2**lmax)) + 1.
     mask_arr = np.zeros(result.shape).astype(bool)
@@ -297,7 +314,7 @@ def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=
         dx = np.array(n.dx)
         coords = np.array(n.coords)
         i,j = indices[dims]
-        
+
         if slice_ is None:
             if q is None:
                 d = func(n)
@@ -330,17 +347,17 @@ def convert_to_uniform(tree,dims=[0,1],slice_=None,q=None,func=lambda x: x,mask=
                     result[fac*i:fac*(i+1),fac*j:fac*(j+1)] = d
                     alpha[fac*i:fac*(i+1),fac*j:fac*(j+1)] = 1-m
                     mask_arr[fac*i:fac*(i+1),fac*j:fac*(j+1)] = m
-                    
+
     if pad is not None:
         temp = np.vstack((np.zeros((2**lmax,))+pad,result,np.zeros((2**lmax,))+pad))
         result = np.hstack((np.zeros((2**lmax+2,1))+pad,temp,np.zeros((2**lmax+2,1))+pad))
-        
+
         temp = np.vstack((np.zeros((2**lmax,)),alpha,np.zeros((2**lmax,))))
         alpha = np.hstack((np.zeros((2**lmax+2,1)),temp,np.zeros((2**lmax+2,1))))
-        
+
         temp = np.vstack((np.zeros((2**lmax,)),mask_arr,np.zeros((2**lmax,))))
         mask_arr = np.hstack((np.zeros((2**lmax+2,1)),temp,np.zeros((2**lmax+2,1))))
-    
+
     result = np.ma.masked_array(result,mask_arr)
     alpha = alpha_func(alpha)
     return result,alpha
@@ -354,7 +371,7 @@ def _test_slice(n,slice_):
         indices = np.array(n.global_index[1:])
         dx = np.array(n.dx)
         coords = np.array(n.coords)
-        
+
         return all([s[1] >= coords[s[0]] and s[1] < coords[s[0]]+dx[s[0]] for s in slice_])
 def _get_slice(tree,dim,q,func,slice_):
     """
@@ -362,26 +379,26 @@ def _get_slice(tree,dim,q,func,slice_):
 
     Parameters
     ----------
-    tree : NDTree.Node 
+    tree : NDTree.Node
         The node of the tree we want to draw
-        
+
     dims : list
         The two dimensions we will be plotting
-        
+
     q : str
         The data column to plot from each leaf's Data object
     func : function
         Before plotting the data we pass it through this function.
         By default this just returns the value passed to it.
-        
+
     slice_ : list of tuples
         If the node has more than two dimensions,
         slice_ indicates the values for the extra
-        dimensions. 
+        dimensions.
         For example, slice_=[(-1,0.2)] indicates
-        that we want the slice to go through 0.2 
+        that we want the slice to go through 0.2
         in the last dimension.
-        
+
 
     Returns
     -------
@@ -400,7 +417,7 @@ def _get_slice(tree,dim,q,func,slice_):
         indices = np.array(n.global_index[1:])
         dx = np.array(n.dx)
         coords = np.array(n.coords)
-        
+
         good = all([s[1] >= coords[s[0]] and s[1] < coords[s[0]]+dx[s[0]] for s in slice_])
         if good:
             return coords[dim],func(getattr(n.data,q)),n.rflag
@@ -417,16 +434,16 @@ def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q='value',func=lambd
 
     Parameters
     ----------
-    tree : NDTree.Node 
+    tree : NDTree.Node
         The tree we want to draw
     dims : list
         The one dimension we will be plotting
     slice_ : list of tuples
         If the node has more than one dimension,
         slice_ indicates the values for the extra
-        dimensions. 
+        dimensions.
         For example, slice_=[(-1,0.2)] indicates
-        that we want the slice to go through 0.2 
+        that we want the slice to go through 0.2
         in the last dimension.
     q : str
         The data column to plot from each leaf's Data object
@@ -434,17 +451,17 @@ def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q='value',func=lambd
         Before plotting the data we pass it through this function.
         By default this just returns the value passed to it.
     figsize : tuple
-        The figure size 
+        The figure size
     fig : matplotlib.figure
         The figure object to plot on
     ax : matplotlib.axis.Axis
         The axis object to plot on
     savefig : str
-        If save is not None then save the figure to a file with 
+        If save is not None then save the figure to a file with
         filename savefig
-    **kargs : 
+    **kargs :
         Keyword arguments passed to plt.plot
-        
+
 
     Returns
     -------
@@ -456,26 +473,26 @@ def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q='value',func=lambd
     """
     if ax is None:
         fig,ax = subplots(figsize=(8,6))
-        
+
     if tree.dim == 1:
         vals=[]
-        tree.walk(leaf_func = lambda x: vals.append([x.coords[0], func(getattr(x.data,q)),int(x.rflag)]))    
+        tree.walk(leaf_func = lambda x: vals.append([x.coords[0], func(getattr(x.data,q)),int(x.rflag)]))
         vals = np.array(vals)
     else:
         vals = np.array(_get_slice(tree,dim,q,func,slice_))
 
-        
+
     if grid or rflag:
         ls = kargs.pop('marker','.')
         kargs['marker'] = ls
-        
+
     if rflag:
         ind = vals[:,2].astype(bool)
         ax.plot(vals[:,0],vals[:,1],**kargs)
         ax.plot(vals[ind,0],vals[ind,1],'.r')
     else:
         ax.plot(vals[:,0],vals[:,1],**kargs)
-    
+
     ax.set_xlabel('$x$')
     ax.set_ylabel(q)
     ax.minorticks_on()
@@ -484,31 +501,31 @@ def line_plot(tree,dim=0,slice_=None,grid=False,rflag=False,q='value',func=lambd
         fig.savefig(savefig,bbox_inches='tight')
     return fig,ax
 
-def plot(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,mask=lambda x: False,
+def plot(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=None,q='value',cmap='viridis',rflag=False,func=lambda x: x,mask=lambda x: False,
          alpha_func=lambda x: np.zeros(x.shape)+1,pad=None,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,
-         labels=None,colorbar=True,cb_kargs={},**kargs):
+         labels={},lognorm=False,colorbar=True,cb_kargs={},**kargs):
     """
     A 2D color plot for the tree.
 
     Parameters
     ----------
-    tree : NDTree.Node 
+    tree : NDTree.Node
         The tree we want to draw
-        
+
     dims : list
         The two dimensions we will be plotting
-        
+
     slice_ : list of tuples
         If the node has more than two dimensions,
         slice_ indicates the values for the extra
-        dimensions. 
+        dimensions.
         For example, slice_=[(-1,0.2)] indicates
-        that we want the slice to go through 0.2 
+        that we want the slice to go through 0.2
         in the last dimension.
     q : str
         The data column to plot from each leaf's Data object
     cmap : str
-        The colormap to use 
+        The colormap to use
     rflag : bool
         If True indicate which cells are flagged for refinement.
     func : function
@@ -519,17 +536,17 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',cma
     colors : str
         The color of the grid lines
     figsize : tuple
-        The figure size 
+        The figure size
     fig : matplotlib.figure
         The figure object to plot on
     ax : matplotlib.axis.Axis
         The axis object to plot on
-    **kargs : 
+    **kargs :
         Keyword arguments passed to plt.imshow
     savefig : str
-        If save is not None then save the figure to a file with 
+        If save is not None then save the figure to a file with
         filename savefig
-        
+
 
     Returns
     -------
@@ -537,19 +554,19 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',cma
         The final figure object
     ax : matplotlib.axis.Axis
         The final axis object
-        
+
     """
     import matplotlib.colors as colors
     import matplotlib.cm as cm
     if ax is None:
         fig,ax = subplots(figsize=figsize)
 
-    
+
     xmin = np.array(tree.xmin)
     xmax = np.array(tree.xmax)
     xmin1 = xmin[dims]
     xmax1 = xmax[dims]
-    
+
     if pad is not None:
         lmax = tree.depth()
         dx0 = (xmax1[0]-xmin1[0])/2**lmax
@@ -557,28 +574,34 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',cma
     else:
         dx0 = 0
         dx1 = 0
-    
-    if integrate is not None:     
-        res,alpha = convert_to_uniform_integrate(tree,dim=integrate,take_min=take_min,dims=dims,slice_=slice_,q=q,func=func,mask=mask,alpha_func=alpha_func,pad=pad)
+
+    if integrate is not None:
+        res,alpha = convert_to_uniform_integrate(tree,dim=integrate,take_min=take_min,take_max=take_max,dims=dims,slice_=slice_,q=q,func=func,mask=mask,alpha_func=alpha_func,pad=pad)
     else:
         res,alpha = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func,mask=mask,alpha_func=alpha_func,pad=pad)
     origin = kargs.pop('origin','lower')
     interpolation = kargs.pop('interpolation','none')
     vmin = kargs.pop('vmin',res.min())
     vmax = kargs.pop('vmax',res.max())
-    
-    
-    norm = colors.Normalize(vmin=vmin,vmax=vmax)
+
+
+
+
+    if lognorm:
+        norm = colors.LogNorm(vmin=vmin,vmax=vmax)
+    else:
+        norm = colors.Normalize(vmin=vmin,vmax=vmax)
     c = cm.ScalarMappable(norm=norm,cmap=cmap)
-    cv = c.to_rgba(res.T)
+    cv = c.to_rgba(res.data.T)
     cv[:,:,-1] = alpha.T
-    
-    ax.imshow(cv,extent=(xmin1[0]-dx0,xmax1[0]+dx0,xmin1[1]-dx1,xmax1[1]+dx1),origin=origin,interpolation=interpolation,cmap=cmap,**kargs)
+
+
+    ax.imshow(cv,extent=(xmin1[0]-dx0,xmax1[0]+dx0,xmin1[1]-dx1,xmax1[1]+dx1),origin=origin,interpolation=interpolation,**kargs)
 
     cb = None
     if colorbar:
         cb = _create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap,**cb_kargs)
-    
+
     if rflag:
         coords = []
         cfunc = lambda x: coords.append(x.get_coords(shift=True) if x.rflag and _test_slice(x,slice_) else None)
@@ -586,31 +609,30 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',cma
         for c in coords:
             if c is not None:
                 ax.plot(c[dims[0]],c[dims[1]],'r.')
-        
-        
 
-    
-    
+
+
+
+
     ax.set_xlim((xmin1[0],xmax1[0]))
     ax.set_ylim((xmin1[1],xmax1[1]))
 
-    ax.minorticks_on()
-    if labels is None:
-    		ax.set_xlabel('$x_{:d}$'.format(dims[0]+1),fontsize=20)
-    		ax.set_ylabel('$x_{:d}$'.format(dims[1]+1),fontsize=20)
-    else:
-    		ax.set_xlabel(labels[0],fontsize=20)
-    		ax.set_ylabel(labels[1],fontsize=20)
 
-    ax.tick_params(labelsize=16)
-    
     if grid:
         grid_plot(tree,dims=dims,slice_=slice_,fig=fig,ax=ax,**kargs)
+    ax.minorticks_on()
+    fontsize = labels.pop('fontsize',20)
+    xlbl = labels.pop('x','$x_{:d}$'.format(dims[0]+1))
+    ylbl = labels.pop('y','$y_{:d}$'.format(dims[1]+1))
+    ax.set_xlabel(xlbl,fontsize=fontsize)
+    ax.set_ylabel(ylbl,fontsize=fontsize)
+
+    ax.tick_params(labelsize=fontsize)
     fig.tight_layout()
     if savefig is not None:
         fig.savefig(savefig,bbox_inches='tight')
-    return fig,ax,cb
-def contour(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',labels=None,rflag=False,func=lambda x: x,pad=None,
+    return fig,ax,cb,res.T,alpha.T
+def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=None,q='value',labels=None,rflag=False,func=lambda x: x,pad=None,
             grid=False,mask=lambda x: False,alpha_func=lambda x: 1.,figsize=(6,6),
             fig=None,ax=None,savefig=None,**kargs):
     """
@@ -618,24 +640,24 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',
 
     Parameters
     ----------
-    tree : NDTree.Node 
+    tree : NDTree.Node
         The tree we want to draw
     Nconts : int
         The number of contours to draw
     dims : list
         The two dimensions we will be plotting
-        
+
     slice_ : list of tuples
         If the node has more than two dimensions,
         slice_ indicates the values for the extra
-        dimensions. 
+        dimensions.
         For example, slice_=[(-1,0.2)] indicates
-        that we want the slice to go through 0.2 
+        that we want the slice to go through 0.2
         in the last dimension.
     q : str
         The data column to plot from each leaf's Data object
     cmap : str
-        The colormap to use 
+        The colormap to use
     rflag : bool
         If True indicate which cells are flagged for refinement.
     func : function
@@ -646,17 +668,17 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',
     colors : str
         The color of the grid lines
     figsize : tuple
-        The figure size 
+        The figure size
     fig : matplotlib.figure
         The figure object to plot on
     ax : matplotlib.axis.Axis
         The axis object to plot on
     savefig : str
-        If save is not None then save the figure to a file with 
+        If save is not None then save the figure to a file with
         filename savefig
-    **kargs : 
+    **kargs :
         Keyword arguments passed to plt.contour
-        
+
 
     Returns
     -------
@@ -664,7 +686,7 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',
         The final figure object
     ax : matplotlib.axis.Axis
         The final axis object
-        
+
     """
     if ax is None:
         fig,ax = subplots(figsize=figsize)
@@ -674,7 +696,7 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',
     xmax = np.array(tree.xmax)
     xmin1 = xmin[dims]
     xmax1 = xmax[dims]
-    
+
     if pad is not None:
         lmax = tree.depth()
         dx0 = (xmax1[0]-xmin1[0])/2**lmax
@@ -682,29 +704,29 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',
     else:
         dx0 = 0
         dx1 = 0
-    
+
     if integrate is not None:
-        res,alpha = convert_to_uniform_integrate(tree,dim=integrate,take_min=take_min,dims=dims,slice_=slice_,q=q,func=lambda x: x,mask=lambda x: False,alpha_func=alpha_func,pad=pad)
+        res,alpha = convert_to_uniform_integrate(tree,dim=integrate,take_min=take_min,take_max=take_max,dims=dims,slice_=slice_,q=q,func=lambda x: x,mask=lambda x: False,alpha_func=alpha_func,pad=pad)
         res = func(res)
     else:
         res,alpha = convert_to_uniform(tree,dims=dims,slice_=slice_,q=q,func=func,mask=lambda x: False,alpha_func=alpha_func,pad=pad)
 
     origin = kargs.pop('origin','lower')
-    
+
     ax.contour(res.T,extent=(xmin1[0]-dx0,xmax1[0]+dx0,xmin1[1]-dx1,xmax1[1]+dx1),origin=origin,**kargs)
-    
-    
+
+
     vmin = kargs.pop('vmin',res.min())
     vmax = kargs.pop('vmax',res.max())
-    
 
-    
+
+
     #_create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap)
 
-  
 
-    
-    
+
+
+
     ax.set_xlim((xmin1[0],xmax1[0]))
     ax.set_ylim((xmin1[1],xmax1[1]))
 
@@ -717,13 +739,13 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,slice_=None,q='value',
     		ax.set_ylabel(labels[1],fontsize=20)
 
     ax.tick_params(labelsize=16)
-    
+
     if grid:
         grid_plot(tree,dims=dims,colors='grey',slice_=slice_,fig=fig,ax=ax,**kargs)
     fig.tight_layout()
     if savefig is not None:
         fig.savefig(savefig,bbox_inches='tight')
-    return fig,ax 
+    return fig,ax
 def _create_colorbar(ax,vmin,vmax,cax=None,log=False,cmap='viridis',**kargs):
     """
     Function to create a colorbar at the top of a plot
@@ -732,20 +754,20 @@ def _create_colorbar(ax,vmin,vmax,cax=None,log=False,cmap='viridis',**kargs):
     ----------
     ax : matplotlib.axis.Axis
         The axis object we want to draw the colorbar over.
-        
+
     vmin : float
         The minimum value for the colorbar
-        
+
     vmax : float
         The maximum value for the colorbar
-        
+
     log : bool
         If log==True then the colorscale is logscale
     cmap : str
         The colormap to use for the colorbar
     **kargs :
         Extra keyword arguments which are passed to matplotlib.colorbar.ColorbarBase
-        
+
 
     Returns
     -------
@@ -757,18 +779,18 @@ def _create_colorbar(ax,vmin,vmax,cax=None,log=False,cmap='viridis',**kargs):
     import matplotlib.cm
     import matplotlib.colors as colors
     from mpl_toolkits.axes_grid1 import make_axes_locatable
-    
-    
+
+
     labelsize = kargs.pop('labelsize',12)
     degrees = kargs.pop('degrees',False)
     upper_lim = kargs.pop('upper_lim',False)
     lower_lim = kargs.pop('lower_lim',False)
-    
+
     if cax is None:
         divider = make_axes_locatable(ax)
         cax = divider.append_axes('top',size='3%',pad=.05)
-   
-    
+
+
     if log:
         norm = colors.LogNorm(vmin=vmin,vmax=vmax)
     else:
@@ -778,9 +800,9 @@ def _create_colorbar(ax,vmin,vmax,cax=None,log=False,cmap='viridis',**kargs):
     cb.ax.xaxis.set_ticks_position('top')
     cb.ax.xaxis.set_label_position('top')
     cb.ax.tick_params(labelsize=labelsize)
-    
-    
-    
+
+
+
     if degrees:
         cb_lbls = cb.ax.get_xticklabels()
         for l in cb_lbls:
@@ -794,6 +816,6 @@ def _create_colorbar(ax,vmin,vmax,cax=None,log=False,cmap='viridis',**kargs):
         cb_lbls = cb.ax.get_xticklabels()
         cb_lbls[0].set_text('$<$'+cb_lbls[0].get_text())
         cb.ax.set_xticklabels(cb_lbls)
-    
-    
+
+
     return cb
