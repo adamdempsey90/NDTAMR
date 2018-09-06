@@ -106,7 +106,7 @@ class TestAMR():
         sys.stdout = capturedOutput                     #  and redirect stdout.
         compression(t)                                     # Call function.
         sys.stdout = sys.__stdout__                     # Reset redirect.
-        ans = '31 points out of 8^2 = 64 for full grid\nYou have saved a factor of 2.06\nWith a compression factor of 51.56%\n'
+        ans = u'31 points out of 8^2 = 64 for full grid\nYou have saved a factor of 2.06\nWith a compression factor of 51.56%\n'
         assert ans == capturedOutput.getvalue()
 
     def test_neighbor_check(self):
