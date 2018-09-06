@@ -2,4 +2,6 @@
 
 N-dimensional adaptive mesh refinement tree structure in Python.
 
+pip install ndtamr
+
 ![alt text](docs/images/spiral.png)
