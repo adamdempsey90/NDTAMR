@@ -12,13 +12,13 @@ def compression(tree):
     """
     depth = tree.depth()
     nleaves = len(tree.list_leaves())
-    
+
     tot = (2**depth)**tree.dim
-    
+
     print('{:d} points out of {:d}^{:d} = {:d} for full grid'.format(nleaves,2**depth,tree.dim,tot))
     print('You have saved a factor of {:.2f}'.format(tot/nleaves))
     print('With a compression factor of {:.2f}%'.format((1-nleaves/tot)*100))
-    
+
 def clear_refine(tree):
     """
     Set all refinemnet flags to False
@@ -29,7 +29,7 @@ def start_refine(tree):
     """
     Look through leaves and split if flagged for refinement.
     """
-    
+
     def _do_split(node,count):
         """
         Split the node if it is flagged for refinement.
@@ -45,7 +45,7 @@ def start_refine(tree):
             node.rflag = False
             count.append(node.name)
             node.split()
-            
+
     total = []
     tree.walk(leaf_func = lambda x: _do_split(x,total))
 
@@ -55,7 +55,7 @@ def start_derefine(tree):
     """
     Look through leaves and derefine if needed.
     """
-    
+
     def _do_unsplit(x,count):
         """
         Unsplit the node if it is flagged for derefinement.
@@ -74,10 +74,10 @@ def start_derefine(tree):
     total = []
     tree.walk(leaf_func = lambda x: _do_unsplit(x,total))
     return len(total)
-def refine(tree,tol=.2,eps=.01,finish=True,show=False,extent=2,plot_kargs={'q':'value'},**kargs):
+def refine(tree,tol=.2,eps=.01,finish=True,show=False,extent=2,plot_kargs={},**kargs):
 
     """
-    The main AMR routine which evaluates and refines 
+    The main AMR routine which evaluates and refines
     each node in the tree.
 
     Parameters
@@ -87,14 +87,14 @@ def refine(tree,tol=.2,eps=.01,finish=True,show=False,extent=2,plot_kargs={'q':'
     tol : float
         The tolerance level for refinement
     eps : float
-        Helps with smoothing out flucuations in the 
+        Helps with smoothing out flucuations in the
         refinement variable
     show : bool
-        If True plot the domain showing which cells 
+        If True plot the domain showing which cells
         will be refined
     **kargs :
         Keyword arguments passed to the refinement_check function
-    
+
     Returns
     -------
     total : int
@@ -116,12 +116,13 @@ def refine(tree,tol=.2,eps=.01,finish=True,show=False,extent=2,plot_kargs={'q':'
         fig,axes=plt.subplots(1,2,figsize=(14,6))
         axes[0].hist(values,bins=20,histtype='step',lw=3,color='k')
         axes[1].hist(values,bins=20,histtype='step',cumulative=True,normed=True,lw=3,color='k')
-        
-        
+
+
         for ax in axes:
             ax.set_xlim(0,1)
             ax.set_xlabel('$\\epsilon$',fontsize=20)
             ax.axvline(tol,c='k',ls='--')
+            ax.tick_params(labelsize=20)
             ax.minorticks_on()
         if tree.dim == 1:
             line_plot(tree,rflag=True,**plot_kargs)
@@ -142,12 +143,12 @@ def neighbor_check(node,**kargs):
     if not node.rflag:
         return
     _,_,_,neighbors = node.find_neighbors(**kargs)
-    
+
     for n in neighbors:
         if n is not None:
             if n.leaf:
                 n.rflag = True
-    
+
 def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,reverse=False):
     """
     The refinement criteria of L\"{o}hner (1987) modified slightly as in the Flash code.
@@ -163,12 +164,12 @@ def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,reverse=False):
     tol : float
         The tolerance level for refinement
     eps : float
-        Helps with smoothing out flucuations in the 
+        Helps with smoothing out flucuations in the
         refinement variable
     min_value : float
-        Minimum value for the denominator 
+        Minimum value for the denominator
     reverse : bool
-        If True then we flag the cell if it does not satisfy the 
+        If True then we flag the cell if it does not satisfy the
         refinement criteria
     Returns
     -------
@@ -176,9 +177,9 @@ def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,reverse=False):
         If True we (de)refine this cell.
     value: float
         The numerical value for the refinement criteria
-        
+
     """
-    
+
     total_neighbors = len(nodes)
     dim = leaf.dim
     # Get the extent of the stencil using total = (2*ext+1)^dim
@@ -188,7 +189,7 @@ def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,reverse=False):
     for i,n in enumerate(nodes):
         if n is None:
                 u[i] = 0
-        else:                
+        else:
             if n.data is not None:
                 u[i] = n.data.get_refinement_data()
             else:
@@ -196,8 +197,8 @@ def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,reverse=False):
                     u[i] = n.restrict().get_refinement_data()
                 except AttributeError:
                     u[i] = 0
-    au = abs(u) 
-    
+    au = abs(u)
+
     num = 0
     den = 0
     ifunc = lambda x: sum([l*stride**(dim-1-k) for k,l in enumerate(x)])
@@ -231,24 +232,24 @@ def refinement_flash(leaf,nodes,tol=.2,eps=0.01,min_value=1e-5,reverse=False):
                 dfac += abs(u[ifunc(iRR)]-u[ifunc(iLR)]) + abs(u[ifunc(iLL)]-u[ifunc(iRL)])
             den += dfac**2
     value = np.sqrt(num/max(den,min_value))
-    
+
     if reverse:
         res = value <= tol
     else:
         res = value > tol
     return res,value
- 
+
 def get_refinement_neighbors(leaf,extent=2):
     """
     Get the list of neighbors used for refinement.
-    This combines the neighbor and upper_neighbor list into 
+    This combines the neighbor and upper_neighbor list into
     one final list of neighbors
 
     Parameters
     ----------
     leaf : NDTree.node
         The leaf node we are evaluating
-        
+
     extent : int
         The extent of the stencil, -extent,...,0,...,extent
 
@@ -272,7 +273,7 @@ def get_refinement_neighbors(leaf,extent=2):
                 node = neighbors[i]
             final_list[i] = node
     return final_list
-    
+
 def refinement_check(leaf,criteria=refinement_flash,extent=2,**kargs):
     """
     Deterimine neighbors and see if this node should be refined.
@@ -283,7 +284,7 @@ def refinement_check(leaf,criteria=refinement_flash,extent=2,**kargs):
     ----------
     leaf : NDTree.node
         The leaf node we are evaluating
-        
+
     criteria : function
         The function which evaluates the refinement criteria.
     extent : int
@@ -304,13 +305,13 @@ def refinement_check(leaf,criteria=refinement_flash,extent=2,**kargs):
 
     final_list = get_refinement_neighbors(leaf,extent=extent)
     res,value = criteria(leaf,final_list,**kargs)
-    
+
     leaf.rflag = res
-    
+
 #    for node in final_list:
 #        if node is not None:
 #            if node.leaf:
 #                node.rflag  |= res
-            
+
 
     return res,value

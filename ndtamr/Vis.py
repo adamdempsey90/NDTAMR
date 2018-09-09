@@ -421,17 +421,19 @@ def convert_to_uniform_integrate(tree,dims=[0,1],dim=-1,take_min=False,take_max=
         temp = np.vstack((np.zeros((2**lmax,)),mask_arr,np.zeros((2**lmax,))))
         mask_arr = np.hstack((np.zeros((2**lmax+2,1)),temp,np.zeros((2**lmax+2,1))))
     result = np.ma.masked_array(result,mask_arr==1)
-    alpha = alpha_func(alpha)
     return result,alpha
 def _test_slice(n,slice_):
         """
         tests if the given node satisfies the slice condition.
         returns none if it does not.
         """
+        if slice_ is None:
+            return True
         lvl = n.global_index[0]
         indices = np.array(n.global_index[1:])
         dx = np.array(n.dx)
         coords = np.array(n.coords)
+
 
         return all([s[1] >= coords[s[0]] and s[1] < coords[s[0]]+dx[s[0]] for s in slice_])
 def _get_slice(tree,dim,q,func,slice_):
@@ -707,7 +709,7 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=Non
     ax.minorticks_on()
     fontsize = labels.pop('fontsize',20)
     xlbl = labels.pop('x','$x_{:d}$'.format(dims[0]+1))
-    ylbl = labels.pop('y','$y_{:d}$'.format(dims[1]+1))
+    ylbl = labels.pop('y','$x_{:d}$'.format(dims[1]+1))
     ax.set_xlabel(xlbl,fontsize=fontsize)
     ax.set_ylabel(ylbl,fontsize=fontsize)
 
@@ -718,7 +720,7 @@ def plot(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=Non
     return fig,ax,cb,res.T,alpha.T
 def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=None,q='value',
         labels={},rflag=False,func=lambda x: x,mask=lambda x: False,alpha_func=lambda x: 1.,
-        pad=None,grid=False,figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
+        pad=None,grid=False,colorbar=True,cb_kargs={},figsize=(6,6),fig=None,ax=None,savefig=None,**kargs):
     """
     Draw a contour plot for the tree.
 
@@ -766,8 +768,10 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=
         set by pad.
     grid : bool
         If True then we additionally plot the grid lines.
-    colors : str
-        The color of the grid lines
+    colorbar : bool
+        If False then do not show the colorbar.
+    cb_kargs = dict
+        Keyword arguments passed to the _create_colorbar() function.
     figsize : tuple
         The figure size
     fig : matplotlib.figure
@@ -819,8 +823,12 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=
 
     vmin = kargs.pop('vmin',res.min())
     vmax = kargs.pop('vmax',res.max())
+    cmap = kargs.pop('cmap','viridis')
 
 
+    cb = None
+    if colorbar:
+        cb = _create_colorbar(ax,vmin=vmin,vmax=vmax,cmap=cmap,**cb_kargs)
 
 
 
@@ -833,7 +841,7 @@ def contour(tree,dims=[0,1],integrate=None,take_min=False,take_max=False,slice_=
     ax.minorticks_on()
     fontsize = labels.pop('fontsize',20)
     xlbl = labels.pop('x','$x_{:d}$'.format(dims[0]+1))
-    ylbl = labels.pop('y','$y_{:d}$'.format(dims[1]+1))
+    ylbl = labels.pop('y','$x_{:d}$'.format(dims[1]+1))
     ax.set_xlabel(xlbl,fontsize=fontsize)
     ax.set_ylabel(ylbl,fontsize=fontsize)
 

@@ -6,8 +6,8 @@ import numpy as np
 import copy
 
 class GenericData():
-    """ 
-    The generic Data class which all user Data classes must 
+    """
+    The generic Data class which all user Data classes must
     inherit from.
     It contains functions to save/read/copy and to do mathematical
     operations used in the integration routines.
@@ -17,7 +17,7 @@ class GenericData():
         self.coords = [c for c in coords]
         self.load(file=file,data=data)
         self.user_init(coords=coords,file=file,data=data)
-    
+
     def user_init(self,coords=(0,0),file=None,data=None):
         return
     def load(self,file=None,data=None):
@@ -26,7 +26,7 @@ class GenericData():
 
         Parameters
         ----------
-        file : hdf5 group object 
+        file : hdf5 group object
             If not None then this contains the data columns
             which we want to read.
         data : class
@@ -109,7 +109,7 @@ class GenericData():
                 setattr(newdat,d,getattr(val,d)/getattr(newdat,d))
             except AttributeError:
                  setattr(newdat,d,val/getattr(newdat,d))
-               
+
         return newdat
     def __truediv__(self,val):
         newdat = copy.deepcopy(self)
@@ -133,27 +133,27 @@ class SimpleTest1D(GenericData):
     """
     1D test class of a gaussian.
     """
-    data_cols = ['value']    
+    data_cols = ['value']
     def __init__(self,coords=(0,),file=None,data=None):
         GenericData.__init__(self,coords=coords,file=file,data=data)
     def func(self):
         """Function which sets the data value"""
-        xc,= self.coords
+        xc = self.coords[0]
         cx = 0
         cy = 0
         s = .1
         res = np.exp(-((xc-cx)**2)/(2*s**2))
-      
+
         return res
     def get_refinement_data(self):
         """Returns the data column which we want to refine on."""
         return self.value
-    
+
 class CircleTest2D(GenericData):
     """
     2D test class which consists of a central gaussians.
     """
-    data_cols = ['value']    
+    data_cols = ['value']
     def __init__(self,coords=(0,0),file=None,data=None):
         GenericData.__init__(self,coords=coords,file=file,data=data)
     def func(self):
@@ -163,7 +163,7 @@ class CircleTest2D(GenericData):
         cy = 0
         s = .3
         res = np.exp(-((xc-cx)**2+(yc-cy)**2)/(2*s**2))
-      
+
         return res
     def get_refinement_data(self):
         """Returns the data column which we want to refine on."""
@@ -173,7 +173,7 @@ class SimpleTest2D(GenericData):
     """
     2D test class which consists of two gaussians.
     """
-    data_cols = ['value']    
+    data_cols = ['value']
     def __init__(self,coords=(0,0),file=None,data=None):
         GenericData.__init__(self,coords=coords,file=file,data=data)
     def func(self):
@@ -191,7 +191,7 @@ class SimpleTest2D(GenericData):
     def get_refinement_data(self):
         """Returns the data column which we want to refine on."""
         return self.value
-      
+
 class SpiralTest2D(GenericData):
     """
     2D test class which consists of a one-armed spiral.
@@ -205,7 +205,7 @@ class SpiralTest2D(GenericData):
         xc,yc = self.coords
         r = np.sqrt( xc**2 + yc**2)
         p = np.arctan2(yc,xc)
-        
+
         ps = np.log(r/1)/.2
         xs = r*np.cos(ps)
         ys = r*np.sin(ps)
@@ -216,8 +216,8 @@ class SpiralTest2D(GenericData):
     def get_refinement_data(self):
         """Returns the data column which we want to refine on."""
         return self.value
-    
-    
+
+
 class SpiralTest3D(GenericData):
     """
     3D test class which consists of a one-armed spiral that follows a
@@ -226,13 +226,13 @@ class SpiralTest3D(GenericData):
     data_cols = ['value']
     def __init__(self,coords=(0,0,0),file=None,data=None):
         GenericData.__init__(self,coords=coords,file=file,data=data)
-        
+
     def func(self):
         """Function which sets the data value"""
         xc,yc,zc = self.coords
         r = np.sqrt( xc**2 + yc**2)
         p = np.arctan2(yc,xc)
-        
+
         ps = np.log(r/1)/.2
         xs = r*np.cos(ps)
         ys = r*np.sin(ps)

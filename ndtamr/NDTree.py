@@ -1,6 +1,6 @@
 """
     The NDTree module contains the n-dimensional tree structure
-    and routines for creating trees and integrating trees.
+    and routines for creating trees.
 """
 from __future__ import print_function, division
 import numpy as np
@@ -700,76 +700,6 @@ def make_uniform(dim=2,depth=6,Data=None,xmin=None,xmax=None,**kargs):
     if Data is not None:
         t.walk(leaf_func=lambda x: setattr(x,'data',Data(coords=x.coords)))
     return t
-def integrate(tree,dim=-1):
-    """
-    Integrate over one dimension of the domain.
-
-    Parameters
-    ----------
-    tree : Node
-        The input tree we which to integrate
-    dim : int
-        The dimension to integrate over
-
-    Returns
-    -------
-    newtree: Node
-         A new tree of one less dimension.
-
-    """
-
-    def _func(leaf,dim):
-        """Function that returns the index and size of the leaf."""
-        lvl = leaf.global_index[0]
-        indx = [i for i in leaf.global_index[1:]]
-        xmin = [x for x in leaf.xmin]
-        xmax = [x for x in leaf.xmax]
-        xi = xmin.pop(dim)
-        xo = xmax.pop(dim)
-        weight = (xo-xi) * 2.**(-lvl)
-        k = indx.pop(dim)
-        z = xi + weight*k
-        if leaf.data is not None:
-            data = leaf.data.copy()
-        else:
-            data = None
-        newindx = [lvl] + indx
-        return newindx,weight,z,data
-
-    maxlevel = tree.depth()
-    xmin = [x for x in tree.xmin]
-    xi = xmin.pop(dim)
-    xmax = [x for x in tree.xmax]
-    xo = xmax.pop(dim)
-
-    lz = xo-xi
-
-    args = {}
-    for key,val in tree.args.items():
-        if key not in ['dim','xmax','xmin']:
-	        args[key] = val
-
-
-    newtree = Node(dim=tree.dim-1,xmin=xmin,xmax=xmax,**args)
-    vals = []
-    for lvl in range(maxlevel+1)[::-1]:
-        tree.walk(target_level=lvl,leaf_func=lambda x: vals.append(_func(x,dim)))
-
-    for indx,weight,z,data in vals:
-        name = newtree.get_name(indx)
-        n = newtree.insert(name)
-        dx = weight/lz
-        if data is not None:
-            data = dx*data
-            if n.data is None:
-                n.data = data.copy()
-            else:
-                try:
-                    n.data = n.data + data
-                except:
-                    print(n.name,n.data,data)
-    return newtree
-
 
 def build_from_file(file,name='0x0',prolongate_func=prolongate_datafunc,restrict_func=restrict_datafunc,data_class=Empty,**kargs):
     """
