@@ -21,7 +21,7 @@ setup(
     # The project's main homepage.
     url='https://github.com/adamdempsey90/NDTAMR',
 
-    py_modules=['ndtamr'],
+    packages=['ndtamr'],
 
     # Author details
     author='Adam M. Dempsey',
